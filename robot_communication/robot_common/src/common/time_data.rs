@@ -90,18 +90,21 @@ impl<'a> WriteToBuff<'a> for TimeData{
 
     fn write_to_buff(&self, buf: &mut util::buffer_writter::BufferWritter<'a>) -> Result<(), Self::Error> {
         if let Some(time) = self.time{
+            buf.write_u8(11)?;
             buf.write_u8(15)?;
-            buf.write_u32(time.timestamp_micros() as u32)?;
+            buf.write_u32(time.timestamp_subsec_micros() as u32)?;
             buf.write_u8(time.second() as u8)?;
             buf.write_u8(time.minute() as u8)?;
             buf.write_u8(time.hour() as u8)?;
             buf.write_u8(time.day() as u8)?;
-            buf.write_u8(time.month() as u8)?;
+            buf.write_u8(time.month() as u8 - 1)?;
             buf.write_u8((time.year() - 1900) as u8)?;
         }
         if let Some(tz) = self.time_zone{
+            let name = tz.name();
+            buf.write_u8((1 + name.as_bytes().len()) as u8)?;
             buf.write_u8(16)?;
-            buf.write_short_str(tz.name())?;
+            buf.write_all(name.as_bytes())?;
         }
         Ok(())
     }

@@ -1,7 +1,7 @@
 use std::{sync::Arc, net::{SocketAddr, ToSocketAddrs, SocketAddrV4, Ipv4Addr}};
 
 use driverstation_comm::DriverstationComm;
-use robot_common::{common::{robot_voltage::RobotVoltage, control_code::ControlCode, request_code::RobotRequestCode, alliance_station::AllianceStation, time_data::TimeData, joystick::Joysticks}, util::{socket::Socket, buffer_writter::BufferWritter, buffer_reader::BufferReader}, driver_to_robot::{DriverstationToRobotPacket, DriverstationToRobotCorePacketDate}, robot_to_driver::RobotToDriverstationPacket};
+use robot_common::{common::{robot_voltage::RobotVoltage, control_code::ControlCode, request_code::RobotRequestCode, alliance_station::AllianceStation, time_data::TimeData, joystick::Joysticks}, util::{socket::Socket, buffer_writter::BufferWritter, buffer_reader::{BufferReader, ReadFromBuff}}, driver_to_robot::{DriverstationToRobotPacket, DriverstationToRobotCorePacketDate}, robot_to_driver::RobotToDriverstationPacket};
 
     // let mut idk_socket = Socket::new(1130, 1140);
     // idk_socket.set_input_nonblocking(true);
@@ -18,7 +18,7 @@ use robot_common::{common::{robot_voltage::RobotVoltage, control_code::ControlCo
     // });
 
 fn main() {
-    // simulate_driverstation();
+    simulate_driverstation();
 
     let driverstation: Arc<DriverstationComm> = DriverstationComm::start_comm();
 
@@ -112,7 +112,7 @@ pub fn simulate_driverstation(){
        // let mut fms_socket = Socket::new(1160, 1120);
     // fms_socket.set_input_nonblocking(true);
 
-    let mut robot_socket = Socket::new_target_knonw(1150, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 11, 14, 21), 1110)));
+    let mut robot_socket = Socket::new_target_knonw(1150, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 5), 1110)));
     robot_socket.set_input_timout(Some(std::time::Duration::from_millis(20)));
     // robot_socket.set_input_nonblocking(true);
 
@@ -123,7 +123,7 @@ pub fn simulate_driverstation(){
     let mut packet_count = 0;
     // let mut packet_loss = 0;
     let mut buf = [0u8; 4096];
-    let mut request_time = false;
+    let mut request_time = true;
     loop{
         let ds_to_rb = DriverstationToRobotPacket{
             core_data: DriverstationToRobotCorePacketDate{
@@ -142,6 +142,9 @@ pub fn simulate_driverstation(){
         }else{
             //println!("wrote: {}", res.unwrap());
         }
+    
+        
+        
         packet_count = packet_count.wrapping_add(1);
 
         for _ in 0..1{

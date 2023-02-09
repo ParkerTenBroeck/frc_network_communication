@@ -43,7 +43,6 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
             buf.write_u8(9)?;
             buf.write_u8(4)?;
             buf.write_u32(0)?;
-            buf.write_u32(0)?;
             buf.write_u32(11_000_000)?;
         }
         // self.extended.write_to_buff(buf)?;
@@ -75,7 +74,7 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
 
         if buf.remaining_packet_data() > 0{
 
-            // println!("remaining: {:?}", buf.read_amount(buf.remaining_packet_data())?);
+            println!("remaining: {:?}", buf.read_amount(buf.remaining_packet_data())?);
         }
 
         while buf.has_more() {
