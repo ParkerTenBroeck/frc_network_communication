@@ -1,9 +1,12 @@
-use std::{time::SystemTime};
+use std::time::SystemTime;
 
-use chrono::{NaiveDateTime, Timelike, Datelike,};
+use chrono::{Datelike, NaiveDateTime, Timelike};
 use chrono_tz::Tz;
 use std::fmt::Debug;
-use util::{buffer_reader::BufferReader, buffer_writter::{WriteToBuff, BufferWritterError}};
+use util::{
+    buffer_reader::BufferReader,
+    buffer_writter::{BufferWritterError, WriteToBuff},
+};
 
 use super::error::RobotPacketParseError;
 
@@ -73,10 +76,10 @@ impl TimeData {
         }
     }
 
-    pub fn from_system() -> Self{
-        Self { 
-            time: Some(chrono::Utc::now().naive_utc()), 
-            time_zone: Some(Tz::UCT) 
+    pub fn from_system() -> Self {
+        Self {
+            time: Some(chrono::Utc::now().naive_utc()),
+            time_zone: Some(Tz::UCT),
         }
     }
 
@@ -85,14 +88,17 @@ impl TimeData {
     }
 }
 
-impl<'a> WriteToBuff<'a> for TimeData{
+impl<'a> WriteToBuff<'a> for TimeData {
     type Error = BufferWritterError;
 
-    fn write_to_buff(&self, buf: &mut util::buffer_writter::BufferWritter<'a>) -> Result<(), Self::Error> {
-        if let Some(time) = self.time{
+    fn write_to_buff(
+        &self,
+        buf: &mut util::buffer_writter::BufferWritter<'a>,
+    ) -> Result<(), Self::Error> {
+        if let Some(time) = self.time {
             buf.write_u8(11)?;
             buf.write_u8(15)?;
-            buf.write_u32(time.timestamp_subsec_micros() as u32)?;
+            buf.write_u32(time.timestamp_subsec_micros())?;
             buf.write_u8(time.second() as u8)?;
             buf.write_u8(time.minute() as u8)?;
             buf.write_u8(time.hour() as u8)?;
@@ -100,7 +106,7 @@ impl<'a> WriteToBuff<'a> for TimeData{
             buf.write_u8(time.month() as u8 - 1)?;
             buf.write_u8((time.year() - 1900) as u8)?;
         }
-        if let Some(tz) = self.time_zone{
+        if let Some(tz) = self.time_zone {
             let name = tz.name();
             buf.write_u8((1 + name.as_bytes().len()) as u8)?;
             buf.write_u8(16)?;

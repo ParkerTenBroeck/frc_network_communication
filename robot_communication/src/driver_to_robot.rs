@@ -1,4 +1,7 @@
-use util::{buffer_reader::{BufferReader, ReadFromBuff}, buffer_writter::WriteToBuff};
+use util::{
+    buffer_reader::{BufferReader, ReadFromBuff},
+    buffer_writter::WriteToBuff,
+};
 
 use crate::common::{
     alliance_station::AllianceStation,
@@ -16,13 +19,25 @@ pub struct DriverstationToRobotPacket {
     pub joystick_data: Joysticks,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct DriverstationToRobotCorePacketDate {
     pub packet: u16,
     pub tag_comm_version: u8,
     pub control_code: ControlCode,
     pub request_code: RobotRequestCode,
     pub station: AllianceStation,
+}
+
+impl Default for DriverstationToRobotCorePacketDate {
+    fn default() -> Self {
+        Self {
+            packet: 0,
+            tag_comm_version: 1,
+            control_code: Default::default(),
+            request_code: Default::default(),
+            station: Default::default(),
+        }
+    }
 }
 
 impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
@@ -70,11 +85,13 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
     }
 }
 
-
-impl<'a> WriteToBuff<'a> for DriverstationToRobotPacket{
+impl<'a> WriteToBuff<'a> for DriverstationToRobotPacket {
     type Error = RobotPacketParseError;
 
-    fn write_to_buff(&self, buf: &mut util::buffer_writter::BufferWritter<'a>) -> Result<(), Self::Error> {
+    fn write_to_buff(
+        &self,
+        buf: &mut util::buffer_writter::BufferWritter<'a>,
+    ) -> Result<(), Self::Error> {
         buf.write_u16(self.core_data.packet)?;
         buf.write_u8(self.core_data.tag_comm_version)?;
         buf.write_u8(self.core_data.control_code.to_bits())?;

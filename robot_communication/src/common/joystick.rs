@@ -1,6 +1,9 @@
 use std::num::NonZeroU16;
 
-use util::{buffer_reader::{BufferReader, ReadFromBuff}, buffer_writter::{WriteToBuff, BufferWritterError}};
+use util::{
+    buffer_reader::{BufferReader, ReadFromBuff},
+    buffer_writter::{BufferWritterError, WriteToBuff},
+};
 
 use std::fmt::Debug;
 
@@ -12,11 +15,14 @@ pub struct Joysticks {
     data: [Joystick; 6],
 }
 
-impl<'a> WriteToBuff<'a> for Joysticks{
+impl<'a> WriteToBuff<'a> for Joysticks {
     type Error = BufferWritterError;
 
-    fn write_to_buff(&self, buf: &mut util::buffer_writter::BufferWritter<'a>) -> Result<(), Self::Error> {
-        for i in 0..self.length{
+    fn write_to_buff(
+        &self,
+        buf: &mut util::buffer_writter::BufferWritter<'a>,
+    ) -> Result<(), Self::Error> {
+        for i in 0..self.length {
             self.get_joystick(i).unwrap().write_to_buff(buf)?;
         }
         Ok(())
@@ -46,6 +52,11 @@ impl Joysticks {
     pub fn get_joystick(&self, index: usize) -> Option<&Joystick> {
         self.data.get(index)
     }
+
+    pub fn insert_joystick(&mut self, index: usize, joystick: Joystick) {
+        self.length = index + 1;
+        self.data[index] = joystick;
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -55,35 +66,37 @@ pub struct Joystick {
     povs: JoystickPovData,
 }
 
-impl<'a> WriteToBuff<'a> for Joystick{
+impl<'a> WriteToBuff<'a> for Joystick {
     type Error = BufferWritterError;
 
-    fn write_to_buff(&self, buf: &mut util::buffer_writter::BufferWritter<'a>) -> Result<(), Self::Error> {
-        
-        let size = 
-        (self.buttons.get_num_buttons() + 7)  / 8 + 1
-        + self.axises.get_num_axis() + 1
-        + self.povs.get_num_pov() * 2 + 1;
+    fn write_to_buff(
+        &self,
+        buf: &mut util::buffer_writter::BufferWritter<'a>,
+    ) -> Result<(), Self::Error> {
+        let size = (self.buttons.get_num_buttons() + 7) / 8
+            + 1
+            + self.axises.get_num_axis()
+            + 1
+            + self.povs.get_num_pov() * 2
+            + 1;
 
         buf.write_u8(size as u8)?;
         buf.write_u8(12)?;
 
         buf.write_u8(self.axises.get_num_axis() as u8)?;
-        for i in 0..self.axises.get_num_axis(){
+        for i in 0..self.axises.get_num_axis() {
             buf.write_u8(self.axises.get_axis(i) as u8)?;
         }
 
         buf.write_u8(self.buttons.get_num_buttons() as u8)?;
-        for p in (0..((self.buttons.get_num_buttons() + 7) / 8)).rev(){
+        for p in (0..((self.buttons.get_num_buttons() + 7) / 8)).rev() {
             buf.write_u8((self.buttons.data >> (p * 8)) as u8)?;
         }
 
-
         buf.write_u8(self.povs.get_num_pov() as u8)?;
-        for i in 0..self.povs.get_num_pov(){
+        for i in 0..self.povs.get_num_pov() {
             buf.write_u16(self.povs.get_pov(i).unwrap_or(0xFFFF))?;
         }
-
 
         Ok(())
     }

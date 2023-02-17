@@ -14,7 +14,7 @@ pub enum RobotPacketParseError {
     InvalidTag(u8),
     GeneralError(Box<dyn Error + Send>),
     BufferTooSmall,
-    MalformedData(&'static str)
+    MalformedData(&'static str),
 }
 
 impl Display for RobotPacketParseError {
@@ -53,11 +53,14 @@ impl From<BufferReaderError> for RobotPacketParseError {
                 ..
             } => RobotPacketParseError::InvalidDataLength(actual_buffer_length),
             BufferReaderError::GeneralError(err) => RobotPacketParseError::GeneralError(err),
+            BufferReaderError::ParseUft8Error(err) => {
+                RobotPacketParseError::GeneralError(Box::new(err))
+            }
         }
     }
 }
 
-impl From<BufferWritterError> for RobotPacketParseError{
+impl From<BufferWritterError> for RobotPacketParseError {
     fn from(value: BufferWritterError) -> Self {
         match value {
             BufferWritterError::BufferTooSmall => Self::BufferTooSmall,

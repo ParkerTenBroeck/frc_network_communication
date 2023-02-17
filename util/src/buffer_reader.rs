@@ -9,12 +9,13 @@ pub enum BufferReaderError {
         actual_buffer_length: usize,
         tried_index: usize,
     },
+    ParseUft8Error(std::str::Utf8Error),
     GeneralError(Box<dyn std::error::Error + 'static + Send>),
 }
 
-impl<T: std::error::Error + 'static + Send + ToOwned> From<T> for BufferReaderError {
-    fn from(value: T) -> Self {
-        BufferReaderError::GeneralError(Box::new(value))
+impl From<std::str::Utf8Error> for BufferReaderError {
+    fn from(value: std::str::Utf8Error) -> Self {
+        Self::ParseUft8Error(value)
     }
 }
 
@@ -71,6 +72,11 @@ impl<'a> BufferReader<'a> {
         Ok((buf[0] as u16) << 8 | buf[1] as u16)
     }
 
+    pub fn read_u24(&mut self) -> Result<u32, BufferReaderError> {
+        let buf = self.read_amount(3)?;
+        Ok((buf[0] as u32) << 16 | (buf[1] as u32) << 8 | buf[2] as u32)
+    }
+
     pub fn read_u32(&mut self) -> Result<u32, BufferReaderError> {
         let buf = self.read_amount(4)?;
         Ok(((buf[0] as u32) << 24)
@@ -79,7 +85,7 @@ impl<'a> BufferReader<'a> {
             | buf[3] as u32)
     }
 
-    pub fn read_f32(&mut self) -> Result<f32, BufferReaderError>{
+    pub fn read_f32(&mut self) -> Result<f32, BufferReaderError> {
         let u32 = self.read_u32()?;
         Ok(f32::from_bits(u32))
     }

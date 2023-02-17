@@ -12,30 +12,30 @@ mycelium_bitfield::bitfield! {
     }
 }
 
-impl RobotRequestCode{
-    pub fn is_normal(&self) -> bool{
+impl RobotRequestCode {
+    pub fn is_normal(&self) -> bool {
         self.get(Self::NORMAL)
     }
 
-    pub fn should_restart_roborio(&self) -> bool{
+    pub fn should_restart_roborio(&self) -> bool {
         self.get(Self::RESTART_ROBORIO)
     }
 
-    pub fn should_restart_roborio_code(&self) -> bool{
+    pub fn should_restart_roborio_code(&self) -> bool {
         self.get(Self::RESTART_ROBORIO_CODE)
     }
 
-    pub fn set_normal(&mut self, normal: bool) -> &mut Self{
+    pub fn set_normal(&mut self, normal: bool) -> &mut Self {
         self.set(Self::NORMAL, normal);
         self
     }
 
-    pub fn set_restart_roborio(&mut self, restart_roborio: bool) -> &mut Self{
+    pub fn set_restart_roborio(&mut self, restart_roborio: bool) -> &mut Self {
         self.set(Self::RESTART_ROBORIO, restart_roborio);
         self
     }
 
-    pub fn set_restart_roborio_code(&mut self, restart_roborio_code: bool) -> &mut Self{
+    pub fn set_restart_roborio_code(&mut self, restart_roborio_code: bool) -> &mut Self {
         self.set(Self::RESTART_ROBORIO_CODE, restart_roborio_code);
         self
     }
@@ -63,16 +63,16 @@ mycelium_bitfield::bitfield! {
     }
 }
 
-impl DriverstationRequestCode{
-    pub fn request_time(&self) -> bool{
+impl DriverstationRequestCode {
+    pub fn request_time(&self) -> bool {
         self.get(Self::REQUEST_TIME)
     }
 
-    pub fn request_whatever_makes_the_robot_not_enable(&self) -> bool{
+    pub fn request_whatever_makes_the_robot_not_enable(&self) -> bool {
         self.get(Self::THIS_MAKES_IT_SO_YOU_CANT_ENABLE)
     }
 
-    pub fn set_request_time(&mut self, request: bool) -> &mut Self{
+    pub fn set_request_time(&mut self, request: bool) -> &mut Self {
         self.set(Self::REQUEST_TIME, request);
         self
     }

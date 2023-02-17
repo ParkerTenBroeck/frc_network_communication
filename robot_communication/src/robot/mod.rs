@@ -3,18 +3,18 @@ use std::{
     sync::{atomic::AtomicU32, Arc, Mutex, MutexGuard},
 };
 
-use robot_common::{
+use util::{buffer_writter::BufferWritter, robot_voltage::RobotVoltage, socket::Socket};
+
+use crate::{
     common::{
         control_code::ControlCode,
         joystick::{Joystick, Joysticks},
         request_code::DriverstationRequestCode,
         roborio_status_code::RobotStatusCode,
-        robot_voltage::RobotVoltage,
         time_data::TimeData,
     },
     driver_to_robot::{DriverstationToRobotCorePacketDate, DriverstationToRobotPacket},
     robot_to_driver::RobotToDriverstationPacket,
-    util::{buffer_writter::BufferWritter, socket::Socket},
 };
 
 #[derive(Default)]
@@ -57,7 +57,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 while Arc::strong_count(&self) > 1 {
                     match socket.read::<DriverstationToRobotPacket>(&mut buf) {
                         Ok(Some(packet)) => {
-                            use robot_common::common::request_code::*;
+                            use crate::common::request_code::*;
                             let robot_send = RobotToDriverstationPacket {
                                 packet: packet.core_data.packet,
                                 tag_comm_version: 1,
@@ -79,15 +79,18 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                                     .unwrap()
                                     .copy_existing_from(&packet.time_data);
 
-                                    unsafe{
-                                        self.request_code
+                                unsafe {
+                                    self.request_code
                                         .get()
                                         .as_mut()
                                         .unwrap_unchecked()
                                         .set(DriverstationRequestCode::REQUEST_TIME, false);
-                                    }
+                                }
                             }
                             *self.last_joystick_data.spin_lock().unwrap() = packet.joystick_data;
+
+
+                            println!("{:#?}", packet.core_data);
                         }
                         Ok(None) => {}
                         Err(error) => {
@@ -127,7 +130,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
     }
 
     pub fn request_time(self: &Arc<Self>) {
-        unsafe{
+        unsafe {
             self.request_code
                 .get()
                 .as_mut()

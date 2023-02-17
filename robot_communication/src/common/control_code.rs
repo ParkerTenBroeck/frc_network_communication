@@ -25,6 +25,11 @@ impl ControlCode {
         self.get(Self::AUTONOMUS)
     }
 
+    pub fn is_practise(&self) -> bool{
+        // self.get(Self::P)
+        todo!()
+    }
+
     pub fn is_teleop(&self) -> bool {
         !(self.is_test() | self.is_autonomus())
     }
@@ -49,45 +54,50 @@ impl ControlCode {
         self.get(Self::DS_ATTACHED)
     }
 
-    pub fn set_test(&mut self) -> &mut Self{
+    pub fn set_test(&mut self) -> &mut Self {
         self.set(Self::TEST, true);
         self.set(Self::AUTONOMUS, false);
         self
     }
 
-    pub fn set_autonomus(&mut self) -> &mut Self{
+    pub fn set_autonomus(&mut self) -> &mut Self {
         self.set(Self::TEST, false);
         self.set(Self::AUTONOMUS, true);
         self
     }
 
-    pub fn set_teleop(&mut self) -> &mut Self{
+    pub fn set_teleop(&mut self) -> &mut Self {
         self.set(Self::TEST, false);
         self.set(Self::AUTONOMUS, false);
         self
     }
 
-    pub fn set_enabled(&mut self) -> &mut Self{
+    pub fn set_enabled(&mut self) -> &mut Self {
         self.set(Self::ENABLED, true);
         self
     }
 
-    pub fn set_disabled(&mut self) -> &mut Self{
+    pub fn set_disabled(&mut self) -> &mut Self {
         self.set(Self::ENABLED, false);
         self
     }
 
-    pub fn set_brownout_protection(&mut self, active: bool) -> &mut Self{
+    pub fn set_brownout_protection(&mut self, active: bool) -> &mut Self {
         self.set(Self::BROWN_OUT_PROTECTION, active);
         self
     }
 
-    pub fn set_estop(&mut self, estop: bool) -> &mut Self{
+    pub fn set_estop(&mut self, estop: bool) -> &mut Self {
         self.set(Self::ESTOP, estop);
         self
     }
 
-    pub fn set_ds_attached(&mut self, attached: bool) -> &mut Self{
+    pub fn set_fms_attached(&mut self, fms_attached: bool) -> &mut Self {
+        self.set(Self::FMS_ATTACHED, fms_attached);
+        self
+    }
+
+    pub fn set_ds_attached(&mut self, attached: bool) -> &mut Self {
         self.set(Self::DS_ATTACHED, attached);
         self
     }

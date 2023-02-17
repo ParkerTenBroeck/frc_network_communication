@@ -6,7 +6,7 @@ pub trait WriteToBuff<'a> {
 #[derive(Debug)]
 pub enum BufferWritterError {
     BufferTooSmall,
-    InvalidData(&'static str)
+    InvalidData(&'static str),
 }
 
 impl std::error::Error for BufferWritterError {}
@@ -81,9 +81,15 @@ impl<'a> BufferWritter<'a> {
         Ok(())
     }
 
-    pub fn write_short_str(&mut self, str: &str) -> Result<(), BufferWritterError>{
-        if str.len() >= 256{
-            Err(BufferWritterError::InvalidData("Small string length longer than 255"))?
+    pub fn write_i32(&mut self, val: i32) -> Result<(), BufferWritterError> {
+        self.write_u32(val as u32)
+    }
+
+    pub fn write_short_str(&mut self, str: &str) -> Result<(), BufferWritterError> {
+        if str.len() >= 256 {
+            Err(BufferWritterError::InvalidData(
+                "Small string length longer than 255",
+            ))?
         }
         self.write_u8(str.len() as u8)?;
         self.write_all(str.as_bytes())?;

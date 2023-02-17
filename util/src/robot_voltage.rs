@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
-use util::{
-    buffer_reader::{BufferReaderError, ReadFromBuff},
-    buffer_writter::{BufferWritterError, WriteToBuff},
+use crate::{
+    buffer_reader::{BufferReader, BufferReaderError, ReadFromBuff},
+    buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
@@ -26,16 +26,18 @@ impl RobotVoltage {
 
 impl Display for RobotVoltage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}v", self.to_f32())
+        if let Some(perc) = f.precision(){
+            write!(f, "{:.perc$}v", self.to_f32())
+        }else{
+            write!(f, "{}v", self.to_f32())
+        }
     }
 }
 
 impl<'a> ReadFromBuff<'a> for RobotVoltage {
     type Error = BufferReaderError;
 
-    fn read_from_buff(
-        buf: &mut util::buffer_reader::BufferReader<'a>,
-    ) -> Result<Self, Self::Error> {
+    fn read_from_buff(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
         Ok(Self {
             int: buf.read_u8()?,
             dec: buf.read_u8()?,
@@ -46,10 +48,7 @@ impl<'a> ReadFromBuff<'a> for RobotVoltage {
 impl<'a> WriteToBuff<'a> for RobotVoltage {
     type Error = BufferWritterError;
 
-    fn write_to_buff(
-        &self,
-        buf: &mut util::buffer_writter::BufferWritter<'a>,
-    ) -> Result<(), Self::Error> {
+    fn write_to_buff(&self, buf: &mut BufferWritter<'a>) -> Result<(), Self::Error> {
         buf.write_u8(self.dec)?;
         buf.write_u8(self.int)?;
         Ok(())

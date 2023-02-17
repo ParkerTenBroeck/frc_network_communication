@@ -1,6 +1,7 @@
 use std::{
     error::Error,
-    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket}, time::Duration,
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
+    time::Duration,
 };
 
 use crate::{
@@ -11,6 +12,7 @@ use crate::{
 pub struct Socket {
     socket: UdpSocket,
     send_target: SendTargetAddr,
+    #[allow(unused)]
     recv_port: u16,
     send_port: u16,
     packets_sent: usize,
@@ -19,14 +21,14 @@ pub struct Socket {
     bytes_recieved: usize,
 }
 
-enum SendTargetAddr{
+enum SendTargetAddr {
     Known(SocketAddr),
     LastReceved(SocketAddr),
 }
 
-impl SendTargetAddr{
-    pub fn get_addr(&self) -> &SocketAddr{
-        match self{
+impl SendTargetAddr {
+    pub fn get_addr(&self) -> &SocketAddr {
+        match self {
             SendTargetAddr::Known(addr) => addr,
             SendTargetAddr::LastReceved(addr) => addr,
         }
@@ -49,7 +51,7 @@ impl Socket {
         }
     }
 
-    pub fn new_target_knonw(recv: u16, send: SocketAddr) -> Self{
+    pub fn new_target_knonw(recv: u16, send: SocketAddr) -> Self {
         let empty = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
         let recv_addr = SocketAddr::new(empty, recv);
         Self {
@@ -87,7 +89,9 @@ impl Socket {
     }
 
     pub fn set_input_timout(&self, dur: Option<Duration>) {
-        self.socket.set_read_timeout(dur).expect("Failed to set socket read timeout");
+        self.socket
+            .set_read_timeout(dur)
+            .expect("Failed to set socket read timeout");
     }
 }
 
@@ -99,7 +103,7 @@ impl Socket {
     {
         let read = match self.socket.recv_from(buf) {
             Ok(read) => {
-                if let SendTargetAddr::LastReceved(addr) = &mut self.send_target{
+                if let SendTargetAddr::LastReceved(addr) = &mut self.send_target {
                     *addr = read.1;
                     addr.set_port(self.send_port)
                 }
@@ -137,16 +141,18 @@ impl Socket {
         T: WriteToBuff<'a>,
         <T as WriteToBuff<'a>>::Error: std::error::Error + 'static,
     {
-        // self.socket_out.set_port(new_port)
         val.write_to_buff(buf)?;
         let buf = buf.get_curr_buff();
-        let addr =self.send_target.get_addr();
-        let written1 = self.socket.send_to(buf, addr)?;
-        let written2 = self.socket.send_to(buf, addr)?;
+        self.write_raw(buf)
+    }
 
-        if written1 != written2 || written1 != buf.len() {
+    pub fn write_raw(&mut self, buf: &[u8]) -> Result<usize, Box<dyn Error>>{
+        let addr = self.send_target.get_addr();
+        let written = self.socket.send_to(buf, addr)?;
+
+        if written != buf.len() {
             Err(format!(
-                "Not all bytes written to packet expected: {} wrote 1:{written1} 2:{written2}",
+                "Not all bytes written to packet expected: {} wrote :{written}",
                 buf.len()
             ))?
         }

@@ -1,5 +1,5 @@
 use util::{
-    buffer_reader::{ReadFromBuff, BufferReader},
+    buffer_reader::{BufferReader, ReadFromBuff},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
@@ -31,19 +31,38 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         buf.write_u8(self.battery.int)?;
         buf.write_u8(self.battery.dec)?;
         buf.write_u8(self.request.to_bits())?;
-        
-        if self.packet & 1 == 1{
-            //ram
-            buf.write_u8(9)?;
-            buf.write_u8(6)?;
-            buf.write_u32(0)?;
-            buf.write_u32(238776320)?;
-        }else{
-            //disk
-            buf.write_u8(9)?;
-            buf.write_u8(4)?;
-            buf.write_u32(0)?;
-            buf.write_u32(11_000_000)?;
+
+        match self.packet & 1 {
+            0 => {
+                //ram
+                buf.write_u8(9)?;
+                buf.write_u8(6)?;
+                buf.write_u32(0)?;
+                buf.write_u32(238776320)?;
+            }
+            1 => {
+                //disk
+                buf.write_u8(9)?;
+                buf.write_u8(4)?;
+                buf.write_u32(0)?;
+                buf.write_u32(11_000_000)?;
+            }
+            2 => {
+                buf.write_u8(0x0f)?;
+                buf.write_u8(0x0e)?;
+                buf.write_u32(0)?;
+                buf.write_u32(0)?;
+                buf.write_u32(1)?;
+                buf.write_u8(0)?;
+                buf.write_u8(0x80)?;
+            }
+            _ => {
+                buf.write_u8(0x22)?;
+                buf.write_u8(0x05)?;
+                for _ in 0..0x21 {
+                    buf.write_u8(0)?;
+                }
+            }
         }
         // self.extended.write_to_buff(buf)?;
 
@@ -72,30 +91,27 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
             request: DriverstationRequestCode::from_bits(buf.read_u8()?),
         };
 
-        if buf.remaining_packet_data() > 0{
-
-            println!("remaining: {:?}", buf.read_amount(buf.remaining_packet_data())?);
+        if buf.remaining_packet_data() > 0 {
+            //println!("remaining: {:?}", buf.read_amount(buf.remaining_packet_data())?);
         }
 
         while buf.has_more() {
             let length = buf.read_u8()? - 1;
             let extra_id = buf.read_u8()?;
             let mut buf = BufferReader::new(buf.read_amount(length as usize)?);
-            println!("id: {extra_id} -> {:?}", buf.raw_buff());
+            //println!("id: {extra_id} -> {:?}", buf.raw_buff());
             match extra_id {
                 4 => {
-                    buf.skip(4);
-                    let usage = buf.read_u32()?;
-                    println!("disk usage: {usage}")
+                    // buf.skip(4);
+                    // let usage = buf.read_u32()?;
+                    //println!("disk usage: {usage}")
                 }
-                5 => {
-                    
-                }
+                5 => {}
                 6 => {
-                    let max_ram_bytes = 256000000;
+                    // let max_ram_bytes = 256000000;
                     buf.skip(4);
-                    let usage = buf.read_u32()?;
-                    println!("ram usage: {}", usage)
+                    // let usage = buf.read_u32()?;
+                    //println!("ram usage: {}", usage)
                 }
                 14 => {
                     // buf.skip(2);
