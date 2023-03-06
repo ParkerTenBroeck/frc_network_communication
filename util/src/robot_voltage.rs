@@ -26,9 +26,9 @@ impl RobotVoltage {
 
 impl Display for RobotVoltage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(perc) = f.precision(){
+        if let Some(perc) = f.precision() {
             write!(f, "{:.perc$}v", self.to_f32())
-        }else{
+        } else {
             write!(f, "{}v", self.to_f32())
         }
     }

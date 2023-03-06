@@ -15,8 +15,8 @@ mycelium_bitfield::bitfield! {
     }
 }
 
-impl RobotStatusCode{
-    pub fn has_robot_code(&self) -> bool{
+impl RobotStatusCode {
+    pub fn has_robot_code(&self) -> bool {
         self.get(Self::ROBOT_HAS_CODE)
     }
 }

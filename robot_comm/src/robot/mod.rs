@@ -89,8 +89,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                             }
                             *self.last_joystick_data.spin_lock().unwrap() = packet.joystick_data;
 
-
-                            println!("{:#?}", packet.core_data);
+                            //println!("{:#?}", packet.core_data);
                         }
                         Ok(None) => {}
                         Err(error) => {

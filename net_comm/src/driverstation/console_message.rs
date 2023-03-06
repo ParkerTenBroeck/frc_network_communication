@@ -7,10 +7,10 @@ pub struct SystemConsoleOutput {}
 impl MessageHandler for SystemConsoleOutput {
     fn receive_message(&mut self, message: Message<'_>) {
         match message.kind {
-            MessageKind::Error(err) => {
+            MessageKind::Error(err, ..) => {
                 println!("\u{001B}[31mError {err}: {}\u{001b}[0m", message.message)
             }
-            MessageKind::Warning(warn) => {
+            MessageKind::Warning(warn, ..) => {
                 println!("\u{001B}[33mWarning {warn}: {}\u{001b}[0m", message.message)
             }
             MessageKind::Message => {

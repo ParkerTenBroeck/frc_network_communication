@@ -75,7 +75,7 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
                 }
                 12 => {
                     read.joystick_data
-                        .push_joystick(Joystick::read_from_buff(&mut buf)?);
+                        .insert(read.joystick_data.count(), Joystick::read_from_buff(&mut buf)?);
                 }
                 invalid => Err(RobotPacketParseError::InvalidTag(invalid))?,
             }

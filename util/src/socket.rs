@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    fmt::Display,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     time::Duration,
 };
@@ -88,15 +89,61 @@ impl Socket {
             .expect("Failed to set socket input to non blocking")
     }
 
-    pub fn set_input_timout(&self, dur: Option<Duration>) {
+    pub fn set_read_timout(&self, dur: Option<Duration>) {
         self.socket
             .set_read_timeout(dur)
             .expect("Failed to set socket read timeout");
     }
+
+    pub fn set_write_timout(&self, dur: Option<Duration>) {
+        self.socket
+            .set_write_timeout(dur)
+            .expect("Failed to set socket write timeout");
+    }
+}
+
+#[derive(Debug)]
+pub enum SocketReadError<T: std::fmt::Debug> {
+    Io(std::io::Error),
+    Buffer(T),
+}
+
+impl<T: Error> Error for SocketReadError<T> {}
+
+impl<T: Display + std::fmt::Debug> Display for SocketReadError<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl<T: std::fmt::Debug> From<std::io::Error> for SocketReadError<T> {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
+#[derive(Debug)]
+pub enum SocketWriteError<T: std::fmt::Debug> {
+    Io(std::io::Error),
+    Buffer(T),
+}
+
+impl<T: Error> Error for SocketWriteError<T> {}
+
+impl<T: Display + std::fmt::Debug> Display for SocketWriteError<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl<T: std::fmt::Debug> From<std::io::Error> for SocketWriteError<T> {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
+    }
 }
 
 impl Socket {
-    pub fn read<'a, T>(&mut self, buf: &'a mut [u8]) -> Result<Option<T>, Box<dyn Error>>
+    pub fn read<'a, T>(&mut self, buf: &'a mut [u8]) -> Result<Option<T>, SocketReadError<T::Error>>
     where
         T: ReadFromBuff<'a>,
         <T as ReadFromBuff<'a>>::Error: std::error::Error + 'static,
@@ -123,7 +170,11 @@ impl Socket {
         } else {
             let got = &buf[..read];
             let mut buff = BufferReader::new(got);
-            let rec = Some(T::read_from_buff(&mut buff)?);
+
+            let rec = match T::read_from_buff(&mut buff) {
+                Ok(ok) => Some(ok),
+                Err(err) => return Err(SocketReadError::Buffer(err)),
+            };
 
             self.packets_received += 1;
             self.bytes_recieved += read;
@@ -136,25 +187,32 @@ impl Socket {
         &mut self,
         val: &T,
         buf: &'a mut BufferWritter<'a>,
-    ) -> Result<usize, Box<dyn Error>>
+    ) -> Result<usize, SocketWriteError<T::Error>>
     where
         T: WriteToBuff<'a>,
         <T as WriteToBuff<'a>>::Error: std::error::Error + 'static,
     {
-        val.write_to_buff(buf)?;
-        let buf = buf.get_curr_buff();
-        self.write_raw(buf)
+        match val.write_to_buff(buf) {
+            Ok(_) => {
+                let buf = buf.get_curr_buff();
+                Ok(self.write_raw(buf)?)
+            }
+            Err(err) => Err(SocketWriteError::Buffer(err)),
+        }
     }
 
-    pub fn write_raw(&mut self, buf: &[u8]) -> Result<usize, Box<dyn Error>>{
+    pub fn write_raw(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let addr = self.send_target.get_addr();
         let written = self.socket.send_to(buf, addr)?;
 
         if written != buf.len() {
-            Err(format!(
-                "Not all bytes written to packet expected: {} wrote :{written}",
-                buf.len()
-            ))?
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "Not all bytes written to packet expected: {} wrote :{written}",
+                    buf.len()
+                ),
+            ));
         }
 
         self.packets_sent += 1;

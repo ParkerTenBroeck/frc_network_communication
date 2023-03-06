@@ -1,5 +1,5 @@
 [package]
-name = "net_comm"
+name = "driverstation"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 util = { path = "../util" }
+robot_comm = { path = "../robot_comm" }
+net_comm = { path = "../net_comm" }
 
 
 [features]

@@ -6,19 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-robot_comm = { path = "./robot_communication" }
-net_comm = { path = "./net_comm" }
+net_comm ={ path = "./net_comm" }
+robot_comm = { path = "./robot_comm" }
 eframe = "*"
-# mycelium-bitfield = "*"
-# #libmdns = "0.7"
-# chrono = "0.4.23"
-# chrono-tz = "0.8.1"
 
 [workspace]
 members = [
     "util",
-    "robot_communication",
+    "robot_comm",
     "net_comm",
+    "driverstation"
 ]
 
 resolver = "2"

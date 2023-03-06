@@ -1,6 +1,7 @@
 use std::{
     io::Read,
     net::{IpAddr, SocketAddr, TcpStream},
+    sync::atomic::AtomicBool,
 };
 
 use util::buffer_reader::{BufferReader, ReadFromBuff};
@@ -14,17 +15,22 @@ pub trait MessageHandler {
 
 pub struct MessageConsole<T: MessageHandler> {
     reciever: T,
+    exit: AtomicBool,
 }
 
 impl<T: MessageHandler> MessageConsole<T> {
     pub fn new(reciever: T) -> Self {
-        Self { reciever }
+        Self {
+            reciever,
+            exit: false.into(),
+        }
     }
 
     fn run_blocking_ret(&mut self, ipaddr: IpAddr) -> Result<(), std::io::Error> {
         let mut conn = TcpStream::connect(SocketAddr::new(ipaddr, 1740))?;
+        
         let mut buf = Vec::with_capacity(4096);
-        loop {
+        while !self.exit.load(std::sync::atomic::Ordering::Relaxed) {
             // to reduce the number of pad packets read before we find the "start" of packets
             // we look for a valid control code (0x0B 0x0C 0x00) but we need to keep track of the
             // size just before the packet.
@@ -42,7 +48,7 @@ impl<T: MessageHandler> MessageConsole<T> {
             // while we dont have a valid control code shift our stored buffer over and read a new byte
             while {
                 let code = shift_buf & 0xFF;
-                !(code == 0xB || code == 0xC /*|| code == 0x00 */)
+                !(code == 0xB || code == 0xC/*|| code == 0x00 */)
             } {
                 // read another byte and shift it into our buffer
                 shift_buf <<= 8;
@@ -72,6 +78,8 @@ impl<T: MessageHandler> MessageConsole<T> {
                 Err(err) => self.reciever.parse_error(err),
             }
         }
+
+        Ok(())
     }
 
     pub fn run_blocking(mut self, ipaddr: IpAddr) {
@@ -92,6 +100,9 @@ impl<T: MessageHandler> MessageConsole<T> {
 
 impl<T: MessageHandler + Send + 'static> MessageConsole<T> {
     pub fn create_new_thread(mr: T, ipaddr: IpAddr) {
-        std::thread::spawn(move || MessageConsole::new(mr).run_blocking(ipaddr));
+        std::thread::Builder::new()
+            .name("Net Comm".into())
+            .spawn(move || MessageConsole::new(mr).run_blocking(ipaddr))
+            .unwrap();
     }
 }

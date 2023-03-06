@@ -25,7 +25,7 @@ impl ControlCode {
         self.get(Self::AUTONOMUS)
     }
 
-    pub fn is_practise(&self) -> bool{
+    pub fn is_practise(&self) -> bool {
         // self.get(Self::P)
         todo!()
     }

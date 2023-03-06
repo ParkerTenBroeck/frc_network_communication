@@ -1,15 +1,3 @@
-use std::{
-    sync::Arc,
-};
-
-use net_comm::{
-    driverstation::{console_message::SystemConsoleOutput, message_handler::MessageConsole},
-    find_robot_ip,
-    robot_voltage::RobotVoltage,
-};
-use robot_comm::{robot::DriverstationComm, driverstation::Driverstation};
-
-
 // let mut idk_socket = Socket::new(1130, 1140);
 // idk_socket.set_input_nonblocking(true);
 // let mut fms_socket = Socket::new(1160, 1120);
@@ -18,8 +6,136 @@ use robot_comm::{robot::DriverstationComm, driverstation::Driverstation};
 // netconsole_socket.set_input_nonblocking(true);
 
 
+#[derive(Debug)]
+pub enum ControllerInfo<'a>{
+    None{
+        id: u8,
+        _b3: u8
+    },
+    Some{
+        id: u8,
+        _b3: u8,
+        name: Cow<'a, str>,
+        axis: SuperSmallVec<u8, 11>,
+        // axis: u8,
+        // axis_ids: [u8; 12],
+        buttons: u8,
+        povs: u8,
+    }
+}
+
 pub fn simulate_roborio() {
     let driverstation: Arc<DriverstationComm> = DriverstationComm::start_comm();
+
+    let ds = driverstation.clone();
+
+    std::thread::spawn(move ||{
+        let mut buf = [0u8; 4096];
+        let listener = TcpListener::bind("0.0.0.0:1740").unwrap();
+
+
+        let mut message_num = 0;
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            println!("Connection established!");
+            // stream.set_read_timeout(Some(std::time::Duration::from_micros(0))).unwrap();
+
+            let mut res = || -> Result<(), Box<dyn Error>> {
+                loop{
+
+
+                    stream.set_nonblocking(true).unwrap();
+                    while let Ok(size) = stream.peek(&mut buf){
+
+                        if size < 2{
+                            break;
+                        }
+                        let packet_size = BufferReader::new(&buf).read_u16()? as usize;
+                        if size - 2 < packet_size{
+                            break;
+                        }
+                        stream.read_exact(&mut buf[0..packet_size + 2])?;
+                        if packet_size == 0 {
+                            break;
+                        }
+
+                        let mut buf = BufferReader::new(&buf);
+                    
+                            
+                        let mut buf = buf.read_known_length_u16().unwrap();
+                        match buf.read_u8()?{
+                            0x02 => {
+                                let id = buf.read_u8()?;
+                                let _b3 = buf.read_u8()?;
+
+                                // let num_axis;
+                                let controller = if buf.read_u8()? == 1{
+                                    ControllerInfo::Some { 
+                                        id, 
+                                        _b3,
+                                        name: Cow::Borrowed(buf.read_short_str()?), 
+                                        axis: {
+                                            let mut axis = SuperSmallVec::new();
+                                            for _ in 0..buf.read_u8()?{
+                                                axis.push(buf.read_u8()?)
+                                            }
+                                            axis
+                                        },
+                                        buttons: buf.read_u8()?, 
+                                        povs: buf.read_u8()? 
+                                    }
+                                }else{
+                                    ControllerInfo::None { id, _b3 }
+                                };
+                                println!("{controller:#?}");
+                            }
+                            0x07 => {
+
+                                println!("0x07 => {:?}", buf.raw_buff());
+                            }
+                            0x0E => {
+                                println!("0x0E => {:?}", buf.raw_buff());
+                            }
+                            val => {
+                                println!("Unknown data tag: {val:02X}")
+                            }
+                        }
+                    }
+
+
+                    stream.set_nonblocking(false).unwrap();
+                    let mut send_msg = |mut msg: Message|{
+                        let mut bufw = BufferWritter::new(&mut buf[2..]);
+                        msg.msg_num = message_num;
+                        message_num += message_num.wrapping_add(1);
+                        msg.ms = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() as u32;
+                        msg.write_to_buff(&mut bufw).unwrap();
+                        
+                        let size = bufw.get_curr_buff().len();
+                        BufferWritter::new(&mut buf[..2]).write_u16(size as u16).unwrap();
+                        stream.write_all(&buf[..size + 2]).unwrap();
+                        
+                    };
+    
+                    if let Some(joystick) = ds.get_joystick(0){
+
+                        send_msg(Message::info(format!("{:#?}", joystick)));
+                    }
+                    
+                    send_msg(Message::info("Hello!"));
+                    send_msg(Message::warn("This is a warning >:(", Warnings::VoltageOutOfRange));
+                    send_msg(Message::error("This is a Error :0", Errors::Error));
+
+                    println!("Sent Message!");
+
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+
+                }
+            };
+            println!("{:#?}", res());
+    
+        }
+    });
 
     loop {
         let last_core = driverstation.get_last_core_data();
@@ -42,8 +158,8 @@ pub fn simulate_roborio() {
         }
 
         if let Some(joystick) = driverstation.get_joystick(0) {
-            let int = (((127.0 - joystick.get_axises().get_axis(1) as f32) / 255.0) * 30.0) as u8;
-            let dec = (127 - joystick.get_axises().get_axis(5) as i32) as u8;
+            let int = (((127.0 - joystick.get_axises()[1] as f32) / 255.0) * 30.0) as u8;
+            let dec = (127 - joystick.get_axises()[5] as i32) as u8;
 
             driverstation.observe_robot_voltage(RobotVoltage { int, dec })
         }
@@ -54,19 +170,22 @@ pub fn simulate_roborio() {
     }
 }
 
-
-
+use std::{sync::Arc, net::TcpListener, io::{Write, Read}, borrow::Cow, error::Error};
 
 use eframe::egui;
+use net_comm::{driverstation::{message_handler::MessageConsole, console_message::SystemConsoleOutput}, robot_voltage::RobotVoltage, robot_to_driverstation::{Message, error::{Warnings, Errors}}};
+use robot_comm::{driverstation::RobotComm, util::{robot_discovery::find_robot_ip, buffer_writter::{BufferWritter, WriteToBuff}, buffer_reader::{BufferReader}, super_small_vec::SuperSmallVec}, robot::DriverstationComm};
 
 fn main() -> Result<(), eframe::Error> {
+    simulate_roborio();
 
     let ipaddr = find_robot_ip(1114).expect("Failed to find roborio");
-    println!("FOUND ROBORIO: {:?}", ipaddr);
+    // println!("FOUND ROBORIO: {:?}", ipaddr);
 
     MessageConsole::create_new_thread(SystemConsoleOutput {}, ipaddr);
-    let driverstation = Driverstation::new(ipaddr);
+    let driverstation = RobotComm::new(Some(ipaddr));
     driverstation.start_new_thread();
+    //TeamNumber::from(1114)
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(320.0, 240.0)),
@@ -76,89 +195,94 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Driver Station",
         options,
-        Box::new(|_cc| Box::new(MyApp{
-            driverstation,
-        })),
+        Box::new(|_cc| Box::new(MyApp { driverstation })),
     )
 }
 
 struct MyApp {
-    driverstation: Arc<Driverstation>
+    driverstation: Arc<RobotComm>,
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            
-            
             let status = self.driverstation.get_observed_status();
-            if status.has_robot_code(){
-                ui.label("Has Robot Code");
-            }else{
-                ui.label("No Robot Code");
+            if self.driverstation.is_connected() {
+                if status.has_robot_code() {
+                    ui.label("Has Robot Code");
+                } else {
+                    ui.label("No Robot Code");
+                }
+            } else {
+                ui.label("No robot communication");
             }
 
             let control = self.driverstation.get_observed_control();
 
-            if control.is_brown_out_protection(){
+            if control.is_brown_out_protection() {
                 ui.label("BROWN OUT PROTECTION");
             }
 
-            if control.is_estop(){
+            if control.is_estop() {
                 ui.label("ESTOP");
             }
 
-            if control.is_driverstation_attached(){
+            if control.is_driverstation_attached() {
                 ui.label("NO IDEA");
             }
 
-            ui.horizontal(|ui|{
-
-                ui.vertical(|ui|{
-
-                    if ui.toggle_value(&mut control.is_teleop(), "Teleop").clicked(){
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    if ui
+                        .toggle_value(&mut control.is_teleop(), "Teleop")
+                        .clicked()
+                    {
                         self.driverstation.set_disabled();
                         self.driverstation.set_teleop();
                     }
-                    if ui.toggle_value(&mut control.is_autonomus(), "Auton").clicked(){
+                    if ui
+                        .toggle_value(&mut control.is_autonomus(), "Auton")
+                        .clicked()
+                    {
                         self.driverstation.set_disabled();
                         self.driverstation.set_autonomus();
                     }
-                    if ui.toggle_value(&mut false, "Practis").clicked(){
+                    if ui.toggle_value(&mut false, "Practis").clicked() {
                         self.driverstation.set_disabled();
                         //TODO: add practis mode support
                     }
-                    if ui.toggle_value(&mut control.is_test(), "Test").clicked(){
+                    if ui.toggle_value(&mut control.is_test(), "Test").clicked() {
                         self.driverstation.set_disabled();
                         self.driverstation.set_test()
                     }
                 });
 
-                ui.vertical(|ui|{
-
+                ui.vertical(|ui| {
                     ui.label(format!("{:.2}", self.driverstation.get_observed_voltage()));
 
-                    ui.horizontal(|ui|{
+                    ui.horizontal(|ui| {
                         let en_res = ui.toggle_value(&mut control.is_enabled(), "Enable");
-        
+
                         let dis_res = ui.toggle_value(&mut !control.is_enabled(), "Dissable");
-        
-                        if en_res.clicked(){
+
+                        if en_res.clicked() {
                             self.driverstation.set_enabled();
                         }
-                        if dis_res.clicked(){
+                        if dis_res.clicked() {
                             self.driverstation.set_disabled();
                         }
                     });
                 });
             });
 
+            if ui.button("Reconnect").clicked() {
+                self.driverstation.reconnect()
+            }
 
             ctx.request_repaint();
         });
     }
 }
-
 
 #[repr(C)]
 #[allow(non_camel_case_types)]

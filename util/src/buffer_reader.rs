@@ -67,6 +67,12 @@ impl<'a> BufferReader<'a> {
         Ok(buf[0])
     }
 
+    pub fn read_known_length_u16(&mut self) -> Result<Self, BufferReaderError> {
+        let size = self.read_u16()? as usize;
+        let buf = self.read_amount(size)?;
+        Ok(Self::new(buf))
+    }
+
     pub fn read_u16(&mut self) -> Result<u16, BufferReaderError> {
         let buf = self.read_amount(2)?;
         Ok((buf[0] as u16) << 8 | buf[1] as u16)
