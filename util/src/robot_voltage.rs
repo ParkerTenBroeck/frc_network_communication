@@ -48,7 +48,7 @@ impl<'a> ReadFromBuff<'a> for RobotVoltage {
 impl<'a> WriteToBuff<'a> for RobotVoltage {
     type Error = BufferWritterError;
 
-    fn write_to_buff(&self, buf: &mut BufferWritter<'a>) -> Result<(), Self::Error> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         buf.write_u8(self.dec)?;
         buf.write_u8(self.int)?;
         Ok(())

@@ -3,7 +3,7 @@ use std::{
     sync::{atomic::AtomicU32, Arc, Mutex, MutexGuard},
 };
 
-use util::{buffer_writter::BufferWritter, robot_voltage::RobotVoltage, socket::Socket};
+use util::{buffer_writter::SliceBufferWritter, robot_voltage::RobotVoltage, socket::Socket};
 
 use crate::{
     common::{
@@ -68,7 +68,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                             };
 
                             socket
-                                .write(&robot_send, &mut BufferWritter::new(&mut buf))
+                                .write(&robot_send, &mut SliceBufferWritter::new(&mut buf))
                                 .unwrap();
 
                             *self.last_core_data.spin_lock().unwrap() = packet.core_data;

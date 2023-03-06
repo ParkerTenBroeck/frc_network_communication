@@ -4,7 +4,7 @@ use std::{
 };
 
 use util::{
-    buffer_writter::{BufferWritter, WriteToBuff},
+    buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
     robot_voltage::RobotVoltage,
     socket::Socket,
 };
@@ -53,11 +53,11 @@ impl RobotComm {
     pub fn start_new_thread(self: &Arc<Self>) {
         let arc = self.clone();
         std::thread::Builder::new()
-        .name("Robot Comm".into())
-        .spawn(|| {
-            arc.run_blocking();
-        })
-        .unwrap();
+            .name("Robot Comm".into())
+            .spawn(|| {
+                arc.run_blocking();
+            })
+            .unwrap();
     }
 
     fn create_socket(&self) -> Option<Socket> {
@@ -65,29 +65,33 @@ impl RobotComm {
 
         let guard = self
             .robot_ip_condvar
-            .wait_while(guard, |ip| ip.is_none() && !self.exit.load(std::sync::atomic::Ordering::Relaxed))
+            .wait_while(guard, |ip| {
+                ip.is_none() && !self.exit.load(std::sync::atomic::Ordering::Relaxed)
+            })
             .unwrap();
-        
-        if let Some(ip) = *guard{
+
+        if let Some(ip) = *guard {
             let socket = Socket::new_target_knonw(1150, SocketAddr::new(ip, 1110));
             socket.set_read_timout(Some(std::time::Duration::from_millis(200)));
             socket.set_write_timout(Some(std::time::Duration::from_millis(200)));
             Some(socket)
-        }else{
+        } else {
             None
         }
     }
 
     pub fn run_blocking(self: Arc<Self>) {
-
-        if self.running.swap(true, std::sync::atomic::Ordering::Acquire){
+        if self
+            .running
+            .swap(true, std::sync::atomic::Ordering::Acquire)
+        {
             return;
         }
 
-        let mut socket = if let Some(some) = self.create_socket(){
+        let mut socket = if let Some(some) = self.create_socket() {
             some
-        }else{
-            return
+        } else {
+            return;
         };
 
         let mut buf = [0u8; 4069];
@@ -104,10 +108,10 @@ impl RobotComm {
                 self.connected
                     .store(false, std::sync::atomic::Ordering::Relaxed);
                 drop(socket);
-                socket = if let Some(some) = self.create_socket(){
+                socket = if let Some(some) = self.create_socket() {
                     some
-                }else{
-                    return
+                } else {
+                    return;
                 };
                 self.reconnect
                     .store(false, std::sync::atomic::Ordering::Relaxed);
@@ -123,8 +127,8 @@ impl RobotComm {
             }
 
             // write our packet to the buffer
-            let mut writter = BufferWritter::new(&mut buf);
-            let res = cb1_lock.write_to_buff(&mut writter);
+            let mut writter = SliceBufferWritter::new(&mut buf);
+            let res = cb1_lock.write_to_buf(&mut writter);
 
             // copy our sent core data out
             // we should later use this to test if the received robot packet updates with our sent codes
@@ -139,7 +143,7 @@ impl RobotComm {
             // actually write our packet buffer to the socket
             let sent = match res {
                 Ok(_) => {
-                    let buf_to_write = writter.get_curr_buff();
+                    let buf_to_write = writter.curr_buf();
                     if let Err(err) = socket.write_raw(buf_to_write) {
                         self.reconnect();
                         eprint!("error: {err:#?}");
@@ -230,8 +234,10 @@ impl RobotComm {
             drift += 0.0200 - start.elapsed().as_secs_f64();
         }
 
-        self.connected.store(false, std::sync::atomic::Ordering::Relaxed);
-        self.running.store(false, std::sync::atomic::Ordering::Release)
+        self.connected
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Release)
     }
 
     pub fn kill_comm(&self) {

@@ -13,8 +13,8 @@ pub enum RobotPacketParseError {
     InvalidJoystickData,
     InvalidTag(u8),
     GeneralError(Box<dyn Error + Send>),
-    BufferTooSmall,
     MalformedData(&'static str),
+    BufferError(BufferWritterError),
 }
 
 impl Display for RobotPacketParseError {
@@ -37,7 +37,7 @@ impl Display for RobotPacketParseError {
             RobotPacketParseError::InvalidJoystickData => write!(f, "InvalidJoystickData"),
             RobotPacketParseError::InvalidTag(tag) => write!(f, "InvalidTag: {tag}"),
             RobotPacketParseError::GeneralError(err) => write!(f, "GeneralError: {err}"),
-            RobotPacketParseError::BufferTooSmall => write!(f, "BufferTooSmall"),
+            RobotPacketParseError::BufferError(err) => write!(f, "{:?}", err),
             RobotPacketParseError::MalformedData(mesg) => write!(f, "MalformedData: {mesg}"),
         }
     }
@@ -62,9 +62,6 @@ impl From<BufferReaderError> for RobotPacketParseError {
 
 impl From<BufferWritterError> for RobotPacketParseError {
     fn from(value: BufferWritterError) -> Self {
-        match value {
-            BufferWritterError::BufferTooSmall => Self::BufferTooSmall,
-            BufferWritterError::InvalidData(value) => Self::MalformedData(value),
-        }
+        Self::BufferError(value)
     }
 }

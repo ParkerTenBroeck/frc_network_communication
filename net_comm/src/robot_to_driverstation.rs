@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use util::{
     buffer_reader::{BufferReaderError, ReadFromBuff},
-    buffer_writter::{BufferWritterError, WriteToBuff},
+    buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
 use self::error::{Errors, Warnings};
@@ -25,9 +25,9 @@ pub struct Message<'a> {
     pub message: Cow<'a, str>,
 }
 
-impl<'a> Message<'a>{
-    pub fn info(message: impl Into<Cow<'a, str>>) -> Self{
-        Self{
+impl<'a> Message<'a> {
+    pub fn info(message: impl Into<Cow<'a, str>>) -> Self {
+        Self {
             ms: 0,
             msg_num: 0,
             kind: MessageKind::Message,
@@ -35,20 +35,20 @@ impl<'a> Message<'a>{
         }
     }
 
-    pub fn warn(message: impl Into<Cow<'a, str>>, warning: Warnings) -> Self{
-        Self{
+    pub fn warn(message: impl Into<Cow<'a, str>>, warning: Warnings) -> Self {
+        Self {
             ms: 0,
             msg_num: 0,
-            kind: MessageKind::Warning(warning,0,0,0),
+            kind: MessageKind::Warning(warning, 0, 0, 0),
             message: message.into(),
         }
     }
 
-    pub fn error(message: impl Into<Cow<'a, str>>, error: Errors) -> Self{
-        Self{
+    pub fn error(message: impl Into<Cow<'a, str>>, error: Errors) -> Self {
+        Self {
             ms: 0,
             msg_num: 0,
-            kind: MessageKind::Error(error,0,0,0),
+            kind: MessageKind::Error(error, 0, 0, 0),
             message: message.into(),
         }
     }
@@ -114,9 +114,9 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
                 let _v3 = buf.read_u8()?;
 
                 if err_num < 0 {
-                    MessageKind::Error(Errors::from(err_num),_v1,_v2,_v3)
+                    MessageKind::Error(Errors::from(err_num), _v1, _v2, _v3)
                 } else {
-                    MessageKind::Warning(Warnings::from(err_num),_v1,_v2,_v3)
+                    MessageKind::Warning(Warnings::from(err_num), _v1, _v2, _v3)
                 }
             }
             0x0C => MessageKind::Message,
@@ -137,21 +137,16 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
     }
 }
 
-impl WriteToBuff<'_> for Message<'_> {
+impl<'a> WriteToBuff<'a> for Message<'a> {
     type Error = BufferWritterError;
 
-    fn write_to_buff(
-        &self,
-        buf: &mut util::buffer_writter::BufferWritter<'_>,
-    ) -> Result<(), Self::Error> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         match self.kind {
             MessageKind::ZeroCode => {
                 buf.write_u8(0)?;
-                buf.write_all(self.message.as_bytes())?;
+                buf.write_buf(self.message.as_bytes())?;
             }
             MessageKind::Message | MessageKind::Error(..) | MessageKind::Warning(..) => {
-                
-
                 if self.kind == MessageKind::Message {
                     buf.write_u8(0x0C)?;
 
@@ -172,14 +167,14 @@ impl WriteToBuff<'_> for Message<'_> {
                         buf.write_u8(_v3)?;
                     } else if let MessageKind::Warning(wrn, _v1, _v2, _v3) = self.kind {
                         buf.write_i32(wrn.into())?;
-                        
+
                         buf.write_u8(_v1)?;
                         buf.write_u8(_v2)?;
                         buf.write_u8(_v3)?;
                     }
                 }
                 // write our actual message
-                buf.write_all(self.message.as_bytes())?;
+                buf.write_buf(self.message.as_bytes())?;
             }
         }
         Ok(())

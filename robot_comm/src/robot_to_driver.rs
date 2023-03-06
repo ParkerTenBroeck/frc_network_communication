@@ -23,7 +23,7 @@ pub struct RobotToDriverstationPacket {
 impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
     type Error = BufferWritterError;
 
-    fn write_to_buff(&self, buf: &mut BufferWritter<'a>) -> Result<(), BufferWritterError> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         buf.write_u16(self.packet)?;
         buf.write_u8(self.tag_comm_version)?;
         buf.write_u8(self.control_code.to_bits())?;

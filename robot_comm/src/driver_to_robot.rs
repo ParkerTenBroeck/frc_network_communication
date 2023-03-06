@@ -1,6 +1,6 @@
 use util::{
     buffer_reader::{BufferReader, ReadFromBuff},
-    buffer_writter::WriteToBuff,
+    buffer_writter::{BufferWritter, WriteToBuff},
 };
 
 use crate::common::{
@@ -74,8 +74,10 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
                     read.time_data.read_time_zone_date(buf)?;
                 }
                 12 => {
-                    read.joystick_data
-                        .insert(read.joystick_data.count(), Joystick::read_from_buff(&mut buf)?);
+                    read.joystick_data.insert(
+                        read.joystick_data.count(),
+                        Joystick::read_from_buff(&mut buf)?,
+                    );
                 }
                 invalid => Err(RobotPacketParseError::InvalidTag(invalid))?,
             }
@@ -88,17 +90,14 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
 impl<'a> WriteToBuff<'a> for DriverstationToRobotPacket {
     type Error = RobotPacketParseError;
 
-    fn write_to_buff(
-        &self,
-        buf: &mut util::buffer_writter::BufferWritter<'a>,
-    ) -> Result<(), Self::Error> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         buf.write_u16(self.core_data.packet)?;
         buf.write_u8(self.core_data.tag_comm_version)?;
         buf.write_u8(self.core_data.control_code.to_bits())?;
         buf.write_u8(self.core_data.request_code.to_bits())?;
         buf.write_u8(self.core_data.station as u8)?;
-        self.time_data.write_to_buff(buf)?;
-        self.joystick_data.write_to_buff(buf)?;
+        self.time_data.write_to_buf(buf)?;
+        self.joystick_data.write_to_buf(buf)?;
 
         Ok(())
     }

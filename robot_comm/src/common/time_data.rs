@@ -5,7 +5,7 @@ use chrono_tz::Tz;
 use std::fmt::Debug;
 use util::{
     buffer_reader::BufferReader,
-    buffer_writter::{BufferWritterError, WriteToBuff},
+    buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
 use super::error::RobotPacketParseError;
@@ -91,10 +91,7 @@ impl TimeData {
 impl<'a> WriteToBuff<'a> for TimeData {
     type Error = BufferWritterError;
 
-    fn write_to_buff(
-        &self,
-        buf: &mut util::buffer_writter::BufferWritter<'a>,
-    ) -> Result<(), Self::Error> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         if let Some(time) = self.time {
             buf.write_u8(11)?;
             buf.write_u8(15)?;
@@ -110,7 +107,7 @@ impl<'a> WriteToBuff<'a> for TimeData {
             let name = tz.name();
             buf.write_u8((1 + name.as_bytes().len()) as u8)?;
             buf.write_u8(16)?;
-            buf.write_all(name.as_bytes())?;
+            buf.write_buf(name.as_bytes())?;
         }
         Ok(())
     }

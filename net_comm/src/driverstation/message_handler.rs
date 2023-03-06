@@ -28,7 +28,7 @@ impl<T: MessageHandler> MessageConsole<T> {
 
     fn run_blocking_ret(&mut self, ipaddr: IpAddr) -> Result<(), std::io::Error> {
         let mut conn = TcpStream::connect(SocketAddr::new(ipaddr, 1740))?;
-        
+
         let mut buf = Vec::with_capacity(4096);
         while !self.exit.load(std::sync::atomic::Ordering::Relaxed) {
             // to reduce the number of pad packets read before we find the "start" of packets

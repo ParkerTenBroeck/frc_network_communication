@@ -1,6 +1,7 @@
 use util::{
     buffer_reader::{BufferReader, ReadFromBuff},
-    buffer_writter::{BufferWritterError, WriteToBuff}, super_small_vec::SuperSmallVec,
+    buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
+    super_small_vec::SuperSmallVec,
 };
 
 use std::fmt::Debug;
@@ -16,15 +17,12 @@ pub struct Joysticks {
 impl<'a> WriteToBuff<'a> for Joysticks {
     type Error = BufferWritterError;
 
-    fn write_to_buff(
-        &self,
-        buf: &mut util::buffer_writter::BufferWritter<'a>,
-    ) -> Result<(), Self::Error> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         for joy in self.data.iter().zip(self.optionals.iter()) {
-            if *joy.1{
-                joy.0.write_to_buff(buf)?;
-            }else{
-                Joystick::default().write_to_buff(buf)?;
+            if *joy.1 {
+                joy.0.write_to_buf(buf)?;
+            } else {
+                Joystick::default().write_to_buf(buf)?;
             }
         }
         Ok(())
@@ -40,34 +38,33 @@ impl Debug for Joysticks {
 }
 
 impl Joysticks {
-    pub fn insert(&mut self, index: usize,  joystick: Joystick) {
+    pub fn insert(&mut self, index: usize, joystick: Joystick) {
         self.data[index] = joystick;
         self.optionals[index] = true;
     }
 
     pub fn remove(&mut self, index: usize) -> Option<Joystick> {
-        if self.optionals[index]{
+        if self.optionals[index] {
             self.optionals[index] = false;
             Some(self.data[index].clone())
-        } else{
+        } else {
             self.optionals[index] = false;
             None
         }
     }
 
     pub fn count(&self) -> usize {
-        self.optionals.iter().filter(|p|**p).count()
+        self.optionals.iter().filter(|p| **p).count()
     }
 
     pub fn get_joystick(&self, index: usize) -> Option<&Joystick> {
-        if self.optionals[index]{
+        if self.optionals[index] {
             Some(&self.data[index])
-        } else{
+        } else {
             None
         }
     }
 }
-
 
 pub type JoystickAxisData = SuperSmallVec<i8, 15>;
 pub type JoystickPovData = SuperSmallVec<NonNegU16, 15>;
@@ -75,26 +72,26 @@ pub type JoystickPovData = SuperSmallVec<NonNegU16, 15>;
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NonNegU16(u16);
 
-impl Debug for NonNegU16{
+impl Debug for NonNegU16 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("NonNegU16").field(&self.get()).finish()
     }
 }
 
-impl NonNegU16{
-    pub fn new(val: u16) -> Self{
+impl NonNegU16 {
+    pub fn new(val: u16) -> Self {
         Self(val)
     }
 
-    pub fn get(&self) -> Option<u16>{
-        if self.0 == 0xFFFF{
+    pub fn get(&self) -> Option<u16> {
+        if self.0 == 0xFFFF {
             None
-        }else{
+        } else {
             Some(self.0)
         }
     }
 
-    pub fn raw(&self) -> u16{
+    pub fn raw(&self) -> u16 {
         self.0
     }
 }
@@ -109,10 +106,7 @@ pub struct Joystick {
 impl<'a> WriteToBuff<'a> for Joystick {
     type Error = BufferWritterError;
 
-    fn write_to_buff(
-        &self,
-        buf: &mut util::buffer_writter::BufferWritter<'a>,
-    ) -> Result<(), Self::Error> {
+    fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
         let size = (self.buttons.get_num_buttons() + 7) / 8
             + 1
             + self.axises.len()

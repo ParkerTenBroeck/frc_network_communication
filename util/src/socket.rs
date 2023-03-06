@@ -186,15 +186,15 @@ impl Socket {
     pub fn write<'a, T>(
         &mut self,
         val: &T,
-        buf: &'a mut BufferWritter<'a>,
+        buf: &'a mut impl BufferWritter<'a>,
     ) -> Result<usize, SocketWriteError<T::Error>>
     where
         T: WriteToBuff<'a>,
         <T as WriteToBuff<'a>>::Error: std::error::Error + 'static,
     {
-        match val.write_to_buff(buf) {
+        match val.write_to_buf(buf) {
             Ok(_) => {
-                let buf = buf.get_curr_buff();
+                let buf = buf.curr_buf();
                 Ok(self.write_raw(buf)?)
             }
             Err(err) => Err(SocketWriteError::Buffer(err)),

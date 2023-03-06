@@ -5,14 +5,13 @@
 // let mut netconsole_socket = Socket::new("0.0.0.0:6668", "0.0.0.0:6666");
 // netconsole_socket.set_input_nonblocking(true);
 
-
 #[derive(Debug)]
-pub enum ControllerInfo<'a>{
-    None{
+pub enum ControllerInfo<'a> {
+    None {
         id: u8,
-        _b3: u8
+        _b3: u8,
     },
-    Some{
+    Some {
         id: u8,
         _b3: u8,
         name: Cow<'a, str>,
@@ -21,7 +20,7 @@ pub enum ControllerInfo<'a>{
         // axis_ids: [u8; 12],
         buttons: u8,
         povs: u8,
-    }
+    },
 }
 
 pub fn simulate_roborio() {
@@ -29,10 +28,9 @@ pub fn simulate_roborio() {
 
     let ds = driverstation.clone();
 
-    std::thread::spawn(move ||{
+    std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         let listener = TcpListener::bind("0.0.0.0:1740").unwrap();
-
 
         let mut message_num = 0;
         for stream in listener.incoming() {
@@ -41,17 +39,14 @@ pub fn simulate_roborio() {
             // stream.set_read_timeout(Some(std::time::Duration::from_micros(0))).unwrap();
 
             let mut res = || -> Result<(), Box<dyn Error>> {
-                loop{
-
-
+                loop {
                     stream.set_nonblocking(true).unwrap();
-                    while let Ok(size) = stream.peek(&mut buf){
-
-                        if size < 2{
+                    while let Ok(size) = stream.peek(&mut buf) {
+                        if size < 2 {
                             break;
                         }
                         let packet_size = BufferReader::new(&buf).read_u16()? as usize;
-                        if size - 2 < packet_size{
+                        if size - 2 < packet_size {
                             break;
                         }
                         stream.read_exact(&mut buf[0..packet_size + 2])?;
@@ -60,37 +55,35 @@ pub fn simulate_roborio() {
                         }
 
                         let mut buf = BufferReader::new(&buf);
-                    
-                            
+
                         let mut buf = buf.read_known_length_u16().unwrap();
-                        match buf.read_u8()?{
+                        match buf.read_u8()? {
                             0x02 => {
                                 let id = buf.read_u8()?;
                                 let _b3 = buf.read_u8()?;
 
                                 // let num_axis;
-                                let controller = if buf.read_u8()? == 1{
-                                    ControllerInfo::Some { 
-                                        id, 
+                                let controller = if buf.read_u8()? == 1 {
+                                    ControllerInfo::Some {
+                                        id,
                                         _b3,
-                                        name: Cow::Borrowed(buf.read_short_str()?), 
+                                        name: Cow::Borrowed(buf.read_short_str()?),
                                         axis: {
                                             let mut axis = SuperSmallVec::new();
-                                            for _ in 0..buf.read_u8()?{
+                                            for _ in 0..buf.read_u8()? {
                                                 axis.push(buf.read_u8()?)
                                             }
                                             axis
                                         },
-                                        buttons: buf.read_u8()?, 
-                                        povs: buf.read_u8()? 
+                                        buttons: buf.read_u8()?,
+                                        povs: buf.read_u8()?,
                                     }
-                                }else{
+                                } else {
                                     ControllerInfo::None { id, _b3 }
                                 };
                                 println!("{controller:#?}");
                             }
                             0x07 => {
-
                                 println!("0x07 => {:?}", buf.raw_buff());
                             }
                             0x0E => {
@@ -102,38 +95,41 @@ pub fn simulate_roborio() {
                         }
                     }
 
-
                     stream.set_nonblocking(false).unwrap();
-                    let mut send_msg = |mut msg: Message|{
-                        let mut bufw = BufferWritter::new(&mut buf[2..]);
+                    let mut send_msg = |mut msg: Message| {
+                        let mut bufw = SliceBufferWritter::new(&mut buf[2..]);
                         msg.msg_num = message_num;
                         message_num += message_num.wrapping_add(1);
-                        msg.ms = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() as u32;
-                        msg.write_to_buff(&mut bufw).unwrap();
-                        
-                        let size = bufw.get_curr_buff().len();
-                        BufferWritter::new(&mut buf[..2]).write_u16(size as u16).unwrap();
-                        stream.write_all(&buf[..size + 2]).unwrap();
-                        
-                    };
-    
-                    if let Some(joystick) = ds.get_joystick(0){
+                        msg.ms = std::time::SystemTime::now()
+                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u32;
+                        msg.write_to_buf(&mut bufw).unwrap();
 
+                        let size = bufw.curr_buf_len();
+                        SliceBufferWritter::new(&mut buf[..2])
+                            .write_u16(size as u16)
+                            .unwrap();
+                        stream.write_all(&buf[..size + 2]).unwrap();
+                    };
+
+                    if let Some(joystick) = ds.get_joystick(0) {
                         send_msg(Message::info(format!("{:#?}", joystick)));
                     }
-                    
+
                     send_msg(Message::info("Hello!"));
-                    send_msg(Message::warn("This is a warning >:(", Warnings::VoltageOutOfRange));
+                    send_msg(Message::warn(
+                        "This is a warning >:(",
+                        Warnings::VoltageOutOfRange,
+                    ));
                     send_msg(Message::error("This is a Error :0", Errors::Error));
 
                     println!("Sent Message!");
 
                     std::thread::sleep(std::time::Duration::from_millis(200));
-
                 }
             };
             println!("{:#?}", res());
-    
         }
     });
 
@@ -170,11 +166,33 @@ pub fn simulate_roborio() {
     }
 }
 
-use std::{sync::Arc, net::TcpListener, io::{Write, Read}, borrow::Cow, error::Error};
+use std::{
+    borrow::Cow,
+    error::Error,
+    io::{Read, Write},
+    net::TcpListener,
+    sync::Arc,
+};
 
 use eframe::egui;
-use net_comm::{driverstation::{message_handler::MessageConsole, console_message::SystemConsoleOutput}, robot_voltage::RobotVoltage, robot_to_driverstation::{Message, error::{Warnings, Errors}}};
-use robot_comm::{driverstation::RobotComm, util::{robot_discovery::find_robot_ip, buffer_writter::{BufferWritter, WriteToBuff}, buffer_reader::{BufferReader}, super_small_vec::SuperSmallVec}, robot::DriverstationComm};
+use net_comm::{
+    driverstation::{console_message::SystemConsoleOutput, message_handler::MessageConsole},
+    robot_to_driverstation::{
+        error::{Errors, Warnings},
+        Message,
+    },
+    robot_voltage::RobotVoltage,
+};
+use robot_comm::{
+    driverstation::RobotComm,
+    robot::DriverstationComm,
+    util::{
+        buffer_reader::BufferReader,
+        buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
+        robot_discovery::find_robot_ip,
+        super_small_vec::SuperSmallVec,
+    },
+};
 
 fn main() -> Result<(), eframe::Error> {
     simulate_roborio();
