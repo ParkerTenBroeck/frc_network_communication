@@ -40,6 +40,8 @@ pub fn simulate_roborio() {
 
             let mut res = || -> Result<(), Box<dyn Error>> {
                 loop {
+                    let mut send_info = false;
+
                     stream.set_nonblocking(true).unwrap();
                     while let Ok(size) = stream.peek(&mut buf) {
                         if size < 2 {
@@ -51,6 +53,7 @@ pub fn simulate_roborio() {
                         }
                         stream.read_exact(&mut buf[0..packet_size + 2])?;
                         if packet_size == 0 {
+                            send_info = true;
                             break;
                         }
 
@@ -94,39 +97,90 @@ pub fn simulate_roborio() {
                             }
                         }
                     }
+                    let mut bufw = SliceBufferWritter::new(&mut buf);
 
                     stream.set_nonblocking(false).unwrap();
                     let mut send_msg = |mut msg: Message| {
-                        let mut bufw = SliceBufferWritter::new(&mut buf[2..]);
-                        msg.msg_num = message_num;
-                        message_num += message_num.wrapping_add(1);
-                        msg.ms = std::time::SystemTime::now()
-                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as u32;
-                        msg.write_to_buf(&mut bufw).unwrap();
+                        let mut bufws = bufw.create_u16_size_guard().unwrap();
+                        msg.set_msg_num(message_num);
+                        message_num = message_num.wrapping_add(1);
+                        msg.set_ms(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u32,
+                        );
+                        msg.write_to_buf(&mut bufws).unwrap();
+                        // bufws.write((8 -(bufws.curr_buf_len() + 2) % 8) %8).unwrap();
+                        drop(bufws);
 
-                        let size = bufw.curr_buf_len();
-                        SliceBufferWritter::new(&mut buf[..2])
-                            .write_u16(size as u16)
-                            .unwrap();
-                        stream.write_all(&buf[..size + 2]).unwrap();
+                        // stream.write_all(bufw.curr_buf()).unwrap();
+                        // bufw.reset();
                     };
 
-                    if let Some(joystick) = ds.get_joystick(0) {
+                    let axis = if let Some(joystick) = ds.get_joystick(0) {
+                        send_msg(Message::warn(
+                            format!("{:#?}", joystick),
+                            Warnings::Unknown(0x12345678),
+                            "defg",
+                            "hijklmnop",
+                        ));
                         send_msg(Message::info(format!("{:#?}", joystick)));
+                        joystick.get_axises().clone()
+                    } else {
+                        SuperSmallVec::default()
+                    };
+
+                    if true {
+                        send_msg(Message {
+                            kind: net_comm::robot_to_driverstation::MessageKind::Report {
+                                kind: net_comm::robot_to_driverstation::ReportKind::ImageVersion(
+                                    "Holy Cow It's Rust".into(),
+                                ),
+                            },
+                        });
+
+                        send_msg(Message {
+                            kind: net_comm::robot_to_driverstation::MessageKind::Report {
+                                kind: net_comm::robot_to_driverstation::ReportKind::LibCVersion(
+                                    "Lib :3 Rust".into(),
+                                ),
+                            },
+                        });
+
+                        send_msg(Message {
+                            kind: net_comm::robot_to_driverstation::MessageKind::Report {
+                                kind: net_comm::robot_to_driverstation::ReportKind::Empty(
+                                    "".into(),
+                                ),
+                            },
+                        });
+                        println!("{:?}", axis);
+                        send_msg(Message {
+                            kind: net_comm::robot_to_driverstation::MessageKind::Unknown0x0D {
+                                disable_5v: 123,
+                                second_top_signal: 2,
+                                third_top_signal: 2,
+                                top_signal: 2,
+                            },
+                        })
                     }
+                    // for _ in 0..20{
 
-                    send_msg(Message::info("Hello!"));
-                    send_msg(Message::warn(
-                        "This is a warning >:(",
-                        Warnings::VoltageOutOfRange,
-                    ));
-                    send_msg(Message::error("This is a Error :0", Errors::Error));
+                    // send_msg(Message::info("Hello!"));
+                    //}
+                    // send_msg(Message::warn(
+                    //     "abc",
+                    //     Warnings::Unknown(0x12345678),
+                    //         "defg", "hijklmnop"
+                    // ));
+                    // send_msg(Message::error("This is a Error :0", Errors::Error, "Bruh", ""));
 
-                    println!("Sent Message!");
+                    stream.write_all(bufw.curr_buf()).unwrap();
 
-                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    // println!("Sent Message!");
+
+                    std::thread::sleep(std::time::Duration::from_millis(20));
                 }
             };
             println!("{:#?}", res());
@@ -170,51 +224,52 @@ use std::{
     borrow::Cow,
     error::Error,
     io::{Read, Write},
-    net::TcpListener,
+    net::{IpAddr, Ipv4Addr, TcpListener},
     sync::Arc,
 };
 
 use eframe::egui;
 use net_comm::{
     driverstation::{console_message::SystemConsoleOutput, message_handler::MessageConsole},
-    robot_to_driverstation::{
-        error::{Errors, Warnings},
-        Message,
-    },
+    robot_to_driverstation::{error::Warnings, Message},
     robot_voltage::RobotVoltage,
 };
 use robot_comm::{
+    common::request_code::RobotRequestCode,
     driverstation::RobotComm,
     robot::DriverstationComm,
     util::{
         buffer_reader::BufferReader,
         buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
-        robot_discovery::find_robot_ip,
         super_small_vec::SuperSmallVec,
     },
 };
 
-fn main() -> Result<(), eframe::Error> {
+fn main() {
     simulate_roborio();
 
-    let ipaddr = find_robot_ip(1114).expect("Failed to find roborio");
-    // println!("FOUND ROBORIO: {:?}", ipaddr);
+    // let ipaddr = find_robot_ip(1114).expect("Failed to find roborio");
+    let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 21));
+    println!("FOUND ROBORIO: {:?}", ipaddr);
 
-    MessageConsole::create_new_thread(SystemConsoleOutput {}, ipaddr);
     let driverstation = RobotComm::new(Some(ipaddr));
     driverstation.start_new_thread();
+    driverstation.set_request_code(*RobotRequestCode::new().set_normal(true));
+
+    MessageConsole::new(SystemConsoleOutput {}).run_blocking(ipaddr);
+
     //TeamNumber::from(1114)
 
-    let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(320.0, 240.0)),
-        ..Default::default()
-    };
+    // let options = eframe::NativeOptions {
+    //     initial_window_size: Some(egui::vec2(320.0, 240.0)),
+    //     ..Default::default()
+    // };
 
-    eframe::run_native(
-        "Driver Station",
-        options,
-        Box::new(|_cc| Box::new(MyApp { driverstation })),
-    )
+    // eframe::run_native(
+    //     "Driver Station",
+    //     options,
+    //     Box::new(|_cc| Box::new(MyApp { driverstation })),
+    // )
 }
 
 struct MyApp {

@@ -179,8 +179,6 @@ impl RobotComm {
                             packet_behind = true;
 
                             println!("\u{001B}[31m{}\u{001b}[0m", packet.packet);
-                        } else {
-                            println!("{}", packet.packet);
                         }
 
                         self.connected
@@ -209,11 +207,11 @@ impl RobotComm {
                     if worst < now.elapsed() {
                         worst = now.elapsed();
                     }
-                    println!(
-                        "worst: {:.2}ms curr: {:.2}ms",
-                        worst.as_secs_f32() * 1000.0,
-                        now.elapsed().as_secs_f32() * 1000.0
-                    );
+                    // println!(
+                    //     "worst: {:.2}ms curr: {:.2}ms",
+                    //     worst.as_secs_f32() * 1000.0,
+                    //     now.elapsed().as_secs_f32() * 1000.0
+                    // );
                 }
             }
 

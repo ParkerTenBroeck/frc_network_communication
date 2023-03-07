@@ -43,7 +43,7 @@ pub fn find_robot_ip(team_number: impl Into<TeamNumber>) -> Result<IpAddr, Box<d
 
     let receiver = mdns.browse(service)?;
 
-    let timeout = std::time::Duration::from_secs(1);
+    let timeout = std::time::Duration::from_secs(5);
     let start = Instant::now();
     let deadline = start.checked_add(timeout).unwrap();
     while Instant::now() < deadline {

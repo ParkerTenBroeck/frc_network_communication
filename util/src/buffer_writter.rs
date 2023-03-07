@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 pub trait WriteToBuff<'a> {
     type Error;
     fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error>;
@@ -59,30 +61,36 @@ impl RecordedSize {
     }
 }
 
-pub struct BufferWritterSizeGuard<'a, T: BufferWritter<'a>> {
-    inner: &'a mut T,
+pub struct BufferWritterSizeGuard<'a, 'i, T>
+where
+    T: BufferWritter<'a> + 'i,
+    'a: 'i,
+{
+    inner: &'i mut T,
     recorded_size_start: usize,
     written: usize,
     recorded_size: RecordedSize,
+    _ph: PhantomData<&'a [u8]>,
 }
 
-impl<'a, T: BufferWritter<'a>> BufferWritterSizeGuard<'a, T> {
-    pub fn new_u8(writter: &'a mut T) -> Result<Self, BufferWritterError> {
+impl<'a, 'i, T: BufferWritter<'a>> BufferWritterSizeGuard<'a, 'i, T> {
+    pub fn new_u8(writter: &'i mut T) -> Result<Self, BufferWritterError> {
         Self::new(writter, RecordedSize::U8)
     }
-    pub fn new_u16(writter: &'a mut T) -> Result<Self, BufferWritterError> {
+    pub fn new_u16(writter: &'i mut T) -> Result<Self, BufferWritterError> {
         Self::new(writter, RecordedSize::U16)
     }
-    pub fn new_u32(writter: &'a mut T) -> Result<Self, BufferWritterError> {
+    pub fn new_u32(writter: &'i mut T) -> Result<Self, BufferWritterError> {
         Self::new(writter, RecordedSize::U32)
     }
 
-    fn new(writter: &'a mut T, recorded_size: RecordedSize) -> Result<Self, BufferWritterError> {
+    fn new(writter: &'i mut T, recorded_size: RecordedSize) -> Result<Self, BufferWritterError> {
         let myself = Self {
             recorded_size_start: writter.curr_buf_len(),
             inner: writter,
             written: 0,
             recorded_size,
+            _ph: PhantomData,
         };
         // ignore the result because we will insert the data later
         myself.inner.write(recorded_size.bytes())?;
@@ -90,7 +98,7 @@ impl<'a, T: BufferWritter<'a>> BufferWritterSizeGuard<'a, T> {
     }
 }
 
-impl<'a, T: BufferWritter<'a>> BufferWritter<'a> for BufferWritterSizeGuard<'a, T> {
+impl<'a, 'i, T: BufferWritter<'a>> BufferWritter<'a> for BufferWritterSizeGuard<'a, 'i, T> {
     fn reset(&mut self) {
         self.inner.reset()
     }
@@ -114,7 +122,7 @@ impl<'a, T: BufferWritter<'a>> BufferWritter<'a> for BufferWritterSizeGuard<'a, 
     }
 }
 
-impl<'a, T: BufferWritter<'a>> std::ops::Drop for BufferWritterSizeGuard<'a, T> {
+impl<'a, 'i, T: BufferWritter<'a>> std::ops::Drop for BufferWritterSizeGuard<'a, 'i, T> {
     fn drop(&mut self) {
         let size_buf = &mut self.inner.curr_buf_mut()
             [self.recorded_size_start..self.recorded_size_start + self.recorded_size.bytes()];
@@ -191,16 +199,16 @@ pub trait BufferWritter<'a>: Sized {
         }
     }
 
-    fn create_u8_size_guard(
-        &'a mut self,
-    ) -> Result<BufferWritterSizeGuard<'_, Self>, BufferWritterError> {
-        BufferWritterSizeGuard::new_u8(self)
-    }
+    // fn create_u8_size_guard(
+    //     &'a mut self,
+    // ) -> Result<BufferWritterSizeGuard<'_, Self>, BufferWritterError> {
+    //     BufferWritterSizeGuard::new_u8(self)
+    // }
 
-    fn create_u16_size_guard(
-        &'a mut self,
-    ) -> Result<BufferWritterSizeGuard<'_, Self>, BufferWritterError> {
-        BufferWritterSizeGuard::new_u16(self)
+    fn create_u16_size_guard<'s>(
+        &'s mut self,
+    ) -> Result<BufferWritterSizeGuard<'a, 's, Self>, BufferWritterError> {
+        BufferWritterSizeGuard::<'a, 's, Self>::new_u16(self)
     }
 }
 

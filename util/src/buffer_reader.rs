@@ -139,6 +139,12 @@ impl<'a> BufferReader<'a> {
         }
     }
 
+    pub fn read_const_amount<const AMOUNT: usize>(
+        &mut self,
+    ) -> Result<&'a [u8; AMOUNT], BufferReaderError> {
+        Ok(self.read_amount(AMOUNT)?.try_into().unwrap())
+    }
+
     pub fn has_more(&self) -> bool {
         self.remaining_packet_data() != 0
     }

@@ -1,5 +1,5 @@
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::{IpAddr, SocketAddr, TcpStream},
     sync::atomic::AtomicBool,
 };
@@ -46,16 +46,16 @@ impl<T: MessageHandler> MessageConsole<T> {
             shift_buf |= buf[2] as u32;
 
             // while we dont have a valid control code shift our stored buffer over and read a new byte
-            while {
-                let code = shift_buf & 0xFF;
-                !(code == 0xB || code == 0xC/*|| code == 0x00 */)
-            } {
-                // read another byte and shift it into our buffer
-                shift_buf <<= 8;
-                let mut byte = [0; 1];
-                conn.read_exact(&mut byte)?;
-                shift_buf |= byte[0] as u32;
-            }
+            // while {
+            //     let code = shift_buf & 0xFF;
+            //     !(code == 0xB || code == 0xC/*|| code == 0x00 */)
+            // } {
+            //     // read another byte and shift it into our buffer
+            //     shift_buf <<= 8;
+            //     let mut byte = [0; 1];
+            //     conn.read_exact(&mut byte)?;
+            //     shift_buf |= byte[0] as u32;
+            // }
 
             // now that we know we're probably looking at a valid comm packet we take the size
             // from the 2 bytes before our msg code.
@@ -77,6 +77,8 @@ impl<T: MessageHandler> MessageConsole<T> {
                 Ok(packet) => self.reciever.receive_message(packet),
                 Err(err) => self.reciever.parse_error(err),
             }
+
+            conn.write_all(&[0, 0]).unwrap();
         }
 
         Ok(())
