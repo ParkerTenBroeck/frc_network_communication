@@ -91,6 +91,18 @@ impl<'a> BufferReader<'a> {
             | buf[3] as u32)
     }
 
+    pub fn read_u64(&mut self) -> Result<u64, BufferReaderError> {
+        let buf = self.read_amount(8)?;
+        Ok(   ((buf[0] as u64) << 56)
+            | ((buf[1] as u64) << 48)
+            | ((buf[2] as u64) << 40)
+            | ((buf[3] as u64) << 32)
+            | ((buf[4] as u64) << 24)
+            | ((buf[5] as u64) << 16)
+            | ((buf[6] as u64) << 8)
+            | buf[7] as u64)
+    }
+
     pub fn read_f32(&mut self) -> Result<f32, BufferReaderError> {
         let u32 = self.read_u32()?;
         Ok(f32::from_bits(u32))

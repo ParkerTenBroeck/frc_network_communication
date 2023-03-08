@@ -55,13 +55,13 @@ pub enum MessageKind<'a> {
         loc: Cow<'a, str>,
         stack: Cow<'a, str>,
     },
-    Unknown0x0D {
+    PowerAndCan {
         disable_5v: u16,
-        // when this is 2 the top row on the power/can metrics has a red underline
+        /// when this is 2 the top row on the power/can metrics has a red underline
         top_signal: u8,
-        // when this is 2 the second top row on the power/can metrics has a red underline
+        /// when this is 2 the second top row on the power/can metrics has a red underline
         second_top_signal: u8,
-        // when this is 2 the third top row on the power/can metrics has a red underline
+        /// when this is 2 the third top row on the power/can metrics has a red underline
         third_top_signal: u8,
     },
 }
@@ -73,7 +73,7 @@ impl<'a> MessageKind<'a> {
             MessageKind::Report { .. } => 0x0A,
             MessageKind::Error { .. } | MessageKind::Warning { .. } => 0x0B,
             MessageKind::Message { .. } => 0x0C,
-            MessageKind::Unknown0x0D { .. } => 0x0D,
+            MessageKind::PowerAndCan { .. } => 0x0D,
         }
     }
 }
@@ -167,6 +167,7 @@ pub enum MessageReadError {
     InvalidDataValue,
     InvalidReportTag(String),
     ReportStartValueNonZero,
+    InvalidMsgCode(u8),
 }
 
 impl From<BufferReaderError> for MessageReadError {
@@ -181,7 +182,6 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
     fn read_from_buff(
         buf: &mut util::buffer_reader::BufferReader<'a>,
     ) -> Result<Self, Self::Error> {
-        println!("{:?}", buf.raw_buff());
         // tells us how to treat the rest of the data
         let msg_code = buf.read_u8()?;
 
@@ -268,14 +268,14 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
                 }
             }
             0x0D => Self {
-                kind: MessageKind::Unknown0x0D {
+                kind: MessageKind::PowerAndCan {
                     disable_5v: buf.read_u16()?,
                     top_signal: buf.read_u8()?,
                     second_top_signal: buf.read_u8()?,
                     third_top_signal: buf.read_u8()?,
                 },
             },
-            _ => panic!("invalid msg_code: {msg_code}"),
+            _ => Err(MessageReadError::InvalidMsgCode(msg_code))?,
         })
     }
 }
@@ -346,7 +346,7 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                 };
                 buf.write_short_str(msg)?;
             }
-            MessageKind::Unknown0x0D {
+            MessageKind::PowerAndCan {
                 disable_5v,
                 top_signal,
                 second_top_signal,

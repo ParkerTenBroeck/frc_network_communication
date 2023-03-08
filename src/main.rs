@@ -155,9 +155,9 @@ pub fn simulate_roborio() {
                                 ),
                             },
                         });
-                        println!("{:?}", axis);
+
                         send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::Unknown0x0D {
+                            kind: net_comm::robot_to_driverstation::MessageKind::PowerAndCan {
                                 disable_5v: 123,
                                 second_top_signal: 2,
                                 third_top_signal: 2,
@@ -228,7 +228,7 @@ use std::{
     sync::Arc,
 };
 
-use eframe::egui;
+// use eframe::egui;
 use net_comm::{
     driverstation::{console_message::SystemConsoleOutput, message_handler::MessageConsole},
     robot_to_driverstation::{error::Warnings, Message},
@@ -272,90 +272,90 @@ fn main() {
     // )
 }
 
-struct MyApp {
-    driverstation: Arc<RobotComm>,
-}
+// struct MyApp {
+//     driverstation: Arc<RobotComm>,
+// }
 
-impl eframe::App for MyApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let status = self.driverstation.get_observed_status();
-            if self.driverstation.is_connected() {
-                if status.has_robot_code() {
-                    ui.label("Has Robot Code");
-                } else {
-                    ui.label("No Robot Code");
-                }
-            } else {
-                ui.label("No robot communication");
-            }
+// impl eframe::App for MyApp {
+//     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+//         egui::CentralPanel::default().show(ctx, |ui| {
+//             let status = self.driverstation.get_observed_status();
+//             if self.driverstation.is_connected() {
+//                 if status.has_robot_code() {
+//                     ui.label("Has Robot Code");
+//                 } else {
+//                     ui.label("No Robot Code");
+//                 }
+//             } else {
+//                 ui.label("No robot communication");
+//             }
 
-            let control = self.driverstation.get_observed_control();
+//             let control = self.driverstation.get_observed_control();
 
-            if control.is_brown_out_protection() {
-                ui.label("BROWN OUT PROTECTION");
-            }
+//             if control.is_brown_out_protection() {
+//                 ui.label("BROWN OUT PROTECTION");
+//             }
 
-            if control.is_estop() {
-                ui.label("ESTOP");
-            }
+//             if control.is_estop() {
+//                 ui.label("ESTOP");
+//             }
 
-            if control.is_driverstation_attached() {
-                ui.label("NO IDEA");
-            }
+//             if control.is_driverstation_attached() {
+//                 ui.label("NO IDEA");
+//             }
 
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    if ui
-                        .toggle_value(&mut control.is_teleop(), "Teleop")
-                        .clicked()
-                    {
-                        self.driverstation.set_disabled();
-                        self.driverstation.set_teleop();
-                    }
-                    if ui
-                        .toggle_value(&mut control.is_autonomus(), "Auton")
-                        .clicked()
-                    {
-                        self.driverstation.set_disabled();
-                        self.driverstation.set_autonomus();
-                    }
-                    if ui.toggle_value(&mut false, "Practis").clicked() {
-                        self.driverstation.set_disabled();
-                        //TODO: add practis mode support
-                    }
-                    if ui.toggle_value(&mut control.is_test(), "Test").clicked() {
-                        self.driverstation.set_disabled();
-                        self.driverstation.set_test()
-                    }
-                });
+//             ui.horizontal(|ui| {
+//                 ui.vertical(|ui| {
+//                     if ui
+//                         .toggle_value(&mut control.is_teleop(), "Teleop")
+//                         .clicked()
+//                     {
+//                         self.driverstation.set_disabled();
+//                         self.driverstation.set_teleop();
+//                     }
+//                     if ui
+//                         .toggle_value(&mut control.is_autonomus(), "Auton")
+//                         .clicked()
+//                     {
+//                         self.driverstation.set_disabled();
+//                         self.driverstation.set_autonomus();
+//                     }
+//                     if ui.toggle_value(&mut false, "Practis").clicked() {
+//                         self.driverstation.set_disabled();
+//                         //TODO: add practis mode support
+//                     }
+//                     if ui.toggle_value(&mut control.is_test(), "Test").clicked() {
+//                         self.driverstation.set_disabled();
+//                         self.driverstation.set_test()
+//                     }
+//                 });
 
-                ui.vertical(|ui| {
-                    ui.label(format!("{:.2}", self.driverstation.get_observed_voltage()));
+//                 ui.vertical(|ui| {
+//                     ui.label(format!("{:.2}", self.driverstation.get_observed_voltage()));
 
-                    ui.horizontal(|ui| {
-                        let en_res = ui.toggle_value(&mut control.is_enabled(), "Enable");
+//                     ui.horizontal(|ui| {
+//                         let en_res = ui.toggle_value(&mut control.is_enabled(), "Enable");
 
-                        let dis_res = ui.toggle_value(&mut !control.is_enabled(), "Dissable");
+//                         let dis_res = ui.toggle_value(&mut !control.is_enabled(), "Dissable");
 
-                        if en_res.clicked() {
-                            self.driverstation.set_enabled();
-                        }
-                        if dis_res.clicked() {
-                            self.driverstation.set_disabled();
-                        }
-                    });
-                });
-            });
+//                         if en_res.clicked() {
+//                             self.driverstation.set_enabled();
+//                         }
+//                         if dis_res.clicked() {
+//                             self.driverstation.set_disabled();
+//                         }
+//                     });
+//                 });
+//             });
 
-            if ui.button("Reconnect").clicked() {
-                self.driverstation.reconnect()
-            }
+//             if ui.button("Reconnect").clicked() {
+//                 self.driverstation.reconnect()
+//             }
 
-            ctx.request_repaint();
-        });
-    }
-}
+//             ctx.request_repaint();
+//         });
+//     }
+// }
 
 #[repr(C)]
 #[allow(non_camel_case_types)]

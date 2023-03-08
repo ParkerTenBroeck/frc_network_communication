@@ -176,6 +176,19 @@ pub trait BufferWritter<'a>: Sized {
         Ok(())
     }
 
+    fn write_u64(&mut self, data: u64) -> Result<(), BufferWritterError> {
+        let buf = self.write_known::<8>()?;
+        buf[0] = (data >> 56) as u8;
+        buf[1] = (data >> 48) as u8;
+        buf[2] = (data >> 40) as u8;
+        buf[3] = (data >> 32) as u8;
+        buf[4] = (data >> 24) as u8;
+        buf[5] = (data >> 16) as u8;
+        buf[6] = (data >> 8) as u8;
+        buf[7] = data as u8;
+        Ok(())
+    }
+
     fn write_i8(&mut self, data: i8) -> Result<(), BufferWritterError> {
         self.write_u8(data as u8)
     }
@@ -186,6 +199,10 @@ pub trait BufferWritter<'a>: Sized {
 
     fn write_i32(&mut self, data: i32) -> Result<(), BufferWritterError> {
         self.write_u32(data as u32)
+    }
+
+    fn write_f32(&mut self, data: f32) -> Result<(), BufferWritterError> {
+        self.write_u32(data.to_bits())
     }
 
     fn write_short_str(&mut self, data: &str) -> Result<(), BufferWritterError> {
@@ -199,16 +216,16 @@ pub trait BufferWritter<'a>: Sized {
         }
     }
 
-    // fn create_u8_size_guard(
-    //     &'a mut self,
-    // ) -> Result<BufferWritterSizeGuard<'_, Self>, BufferWritterError> {
-    //     BufferWritterSizeGuard::new_u8(self)
-    // }
-
     fn create_u16_size_guard<'s>(
         &'s mut self,
     ) -> Result<BufferWritterSizeGuard<'a, 's, Self>, BufferWritterError> {
         BufferWritterSizeGuard::<'a, 's, Self>::new_u16(self)
+    }
+
+    fn create_u8_size_guard<'s>(
+        &'s mut self,
+    ) -> Result<BufferWritterSizeGuard<'a, 's, Self>, BufferWritterError> {
+        BufferWritterSizeGuard::<'a, 's, Self>::new_u8(self)
     }
 }
 

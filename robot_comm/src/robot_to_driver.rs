@@ -17,8 +17,48 @@ pub struct RobotToDriverstationPacket {
     pub status: RobotStatusCode,
     pub battery: RobotVoltage,
     pub request: DriverstationRequestCode,
-    //pub extended: RobotOutExtended,
 }
+
+trait RobotToDriverPacketAdditions<'a>: BufferWritter<'a>{
+    const ID: u8;
+}
+
+pub struct RobotToDriverCpuUsage<const CPUS: usize>{
+    pub usages: [CpuUsage; CPUS]
+}
+
+#[repr(packed(1))]
+pub struct CpuUsage{
+    pub user: f32,
+    pub _unknown1: f32,
+    pub _unknown2: f32,
+    pub system: f32,
+}
+
+pub struct RobotToDriverRamUsage{
+    pub bytes_used: u64,
+}
+
+pub struct RobotToDriverDiskUsage{
+    pub bytes_used: u64,
+}
+
+pub enum UsageReport<'a>{
+    DiskUsage(RobotToDriverDiskUsage),
+    RamUsage(RobotToDriverRamUsage),
+    CanUsage(RobotToDriverCanUsage),
+    CpuUsage(&'a [CpuUsage])
+}
+
+#[derive(Default)]
+pub struct RobotToDriverCanUsage{
+    pub utilization: f32,
+    pub bus_off: u32,
+    pub tx_full: u32,
+    pub rx: u8,
+    pub tx: u8
+}
+
 
 impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
     type Error = BufferWritterError;
@@ -32,35 +72,45 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         buf.write_u8(self.battery.dec)?;
         buf.write_u8(self.request.to_bits())?;
 
-        match self.packet & 1 {
+        let mut buf = buf.create_u8_size_guard()?;
+        match self.packet & 3 {
             0 => {
-                //ram
-                buf.write_u8(9)?;
+                // ram
                 buf.write_u8(6)?;
-                buf.write_u32(0)?;
-                buf.write_u32(238776320)?;
+                // num bytes free
+                buf.write_u64((self.packet as u64) << 22)?;
             }
             1 => {
-                //disk
-                buf.write_u8(9)?;
+                // disk
                 buf.write_u8(4)?;
-                buf.write_u32(0)?;
-                buf.write_u32(11_000_000)?;
+                // num bytes free
+                buf.write_u64((self.packet as u64) << 31)?;
             }
             2 => {
-                buf.write_u8(0x0f)?;
+                // can usage
                 buf.write_u8(0x0e)?;
-                buf.write_u32(0)?;
-                buf.write_u32(0)?;
-                buf.write_u32(1)?;
-                buf.write_u8(0)?;
-                buf.write_u8(0x80)?;
+
+                // utilization % [0, 1.0]
+                buf.write_f32(1.0)?;
+                // Bus Off
+                buf.write_u32(5)?;
+                // TX Full
+                buf.write_u32(10)?;
+                // Recieve
+                buf.write_u8(23)?;
+                // Transmit
+                buf.write_u8(32)?;
             }
             _ => {
-                buf.write_u8(0x22)?;
                 buf.write_u8(0x05)?;
-                for _ in 0..0x21 {
-                    buf.write_u8(0)?;
+
+                let num = 2;
+                buf.write_u8(num + 5)?;
+                for _ in 0..num{
+                    buf.write_f32(0.0)?;
+                    buf.write_f32(100.0)?;
+                    buf.write_f32(0.0)?;
+                    buf.write_f32(0.0)?;
                 }
             }
         }
@@ -102,21 +152,38 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
             //println!("id: {extra_id} -> {:?}", buf.raw_buff());
             match extra_id {
                 4 => {
-                    // buf.skip(4);
-                    // let usage = buf.read_u32()?;
-                    //println!("disk usage: {usage}")
+                    let usage = buf.read_u64()?;
+                    println!("disk usage: {usage}")
                 }
-                5 => {}
+                5 => {
+                    let cpus = buf.read_u8()?;
+                    for i in 0..cpus{
+                        // so these should all sum together to get the total CPU% [0.0, 100.0]
+                        let robot = buf.read_f32()?;
+                        let f2 = buf.read_f32()?;
+                        let f3 = buf.read_f32()?;
+                        let system = buf.read_f32()?;
+
+                        println!("cpu: {i} -> user: {robot:.2} {f2:.2} {f3:.2} system?: {system:.2} total: {}", robot + system + f2 + f3)
+                    }
+                }
                 6 => {
-                    // let max_ram_bytes = 256000000;
-                    buf.skip(4);
-                    // let usage = buf.read_u32()?;
-                    //println!("ram usage: {}", usage)
+                    let usage = buf.read_u64()?;
+                    println!("ram usage: {}", usage)
                 }
                 14 => {
-                    // buf.skip(2);
-                    // let usage = buf.read_f32()?;
-                    // println!("can usage: {usage}")
+                    // utilization % [0, 1.0]
+                    let utilization = buf.read_f32()?;
+                    // Bus Off
+                    let bus_off = buf.read_u32()?;
+                    // TX Full
+                    let tx_full = buf.read_u32()?;
+                    // Recieve
+                    let recieve = buf.read_u8()?;
+                    // Transmit
+                    let transmit = buf.read_u8()?;
+
+                    println!("uti %{utilization:.2}, bus_off: {bus_off}, tx_full: {tx_full}, rx: {recieve}, ts: {transmit}");
                 }
                 invalid => Err(RobotPacketParseError::InvalidTag(invalid))?,
             }
