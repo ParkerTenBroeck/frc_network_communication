@@ -166,11 +166,11 @@ impl<'a> BufferReader<'a> {
 
     pub fn assert_empty(&self) -> Result<(), BufferReaderError> {
         if self.has_more(){
-            Ok(())
-        }else{
             Err(BufferReaderError::BufferEmptyAssertionFailed{
                 remaining: self.remaining_buf_len()
             })
+        }else{
+            Ok(())
         }
     }
 }

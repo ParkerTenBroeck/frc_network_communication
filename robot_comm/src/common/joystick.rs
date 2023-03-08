@@ -179,7 +179,6 @@ impl Joystick{
         self.buttons_len
     }
 
-    #[must_use]
     pub fn push_button(&mut self, button: bool) -> Result<(), ButtonLenOverflow>{
         if self.buttons_len < 32{
             self.buttons |= (button as u32) << self.buttons_len;
@@ -190,7 +189,6 @@ impl Joystick{
         }
     }
 
-    #[must_use]
     pub fn push_axis(&mut self, axis: i8) -> Result<(), AxisLenOverflow>{
         let len = self.axis_len();
         if  len < 10{
@@ -204,7 +202,6 @@ impl Joystick{
         }
     }
 
-    #[must_use]
     pub fn push_pov(&mut self, pov: NonNegU16) -> Result<(), PovLenOverflow>{
         let len = self.povs_len();
         if len < 2{

@@ -129,7 +129,7 @@ pub fn simulate_roborio() {
                         // joystick.get_axises().clone()
                     }
 
-                    if true {
+                    if send_info {
                         send_msg(Message {
                             kind: net_comm::robot_to_driverstation::MessageKind::Report {
                                 kind: net_comm::robot_to_driverstation::ReportKind::ImageVersion(
@@ -206,10 +206,10 @@ pub fn simulate_roborio() {
         }
 
         if let Some(joystick) = driverstation.get_joystick(0) {
-            // let int = (((127.0 - joystick.get_axises()[1] as f32) / 255.0) * 30.0) as u8;
-            // let dec = (127 - joystick.get_axises()[5] as i32) as u8;
+            let int = (((127.0 - joystick.get_axis(1).unwrap() as f32) / 255.0) * 30.0) as u8;
+            let dec = (127 - joystick.get_axis(5).unwrap() as i32) as u8;
 
-            // driverstation.observe_robot_voltage(RobotVoltage { int, dec })
+            driverstation.observe_robot_voltage(RobotVoltage { int, dec })
         }
 
         driverstation.request_time();
