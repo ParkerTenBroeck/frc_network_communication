@@ -50,7 +50,7 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
                 tag_comm_version: {
                     let read = buf.read_u8()?;
                     if read != 1 {
-                        Err(RobotPacketParseError::InvalidCommVersion(read))?
+                        Err(RobotPacketParseError::RobotToDriverInvalidUsageTag(read))?
                     }
                     read
                 },
@@ -62,16 +62,24 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
             joystick_data: Joysticks::default(),
         };
 
+        if read.core_data.control_code.is_invalid(){
+            Err(RobotPacketParseError::InvalidControlCode(read.core_data.control_code.to_bits()))?
+        }
+        if read.core_data.request_code.is_invalid(){
+            Err(RobotPacketParseError::InvalidRequestCode(read.core_data.request_code.to_bits()))?
+        }
+
+
         while buf.has_more() {
             let length = buf.read_u8()? - 1;
             let extra_id = buf.read_u8()?;
             let mut buf = BufferReader::new(buf.read_amount(length as usize)?);
             match extra_id {
                 15 => {
-                    read.time_data.read_time_data(buf)?;
+                    read.time_data.read_time_data(&mut buf)?;
                 }
                 16 => {
-                    read.time_data.read_time_zone_date(buf)?;
+                    read.time_data.read_time_zone_date(&mut buf)?;
                 }
                 12 => {
                     read.joystick_data.insert(
@@ -79,8 +87,9 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
                         Joystick::read_from_buff(&mut buf)?,
                     );
                 }
-                invalid => Err(RobotPacketParseError::InvalidTag(invalid))?,
+                invalid => Err(RobotPacketParseError::DriverToRobotInvalidExtraTag(invalid))?,
             }
+            buf.assert_empty()?;
         }
 
         Ok(read)

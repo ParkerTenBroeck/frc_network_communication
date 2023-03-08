@@ -2,19 +2,25 @@ mycelium_bitfield::bitfield! {
     #[derive(Default, PartialEq, Eq, Hash)]
     pub struct RobotRequestCode<u8>{
         pub const NORMAL: bool;
-        pub const _2: bool;
-        pub const _3: bool;
+        // pub const _2: bool;
+        // pub const _3: bool;
+        pub const _RESERVED_0 = 2;
         pub const RESTART_ROBORIO: bool;
         pub const RESTART_ROBORIO_CODE: bool;
-        pub const _6: bool;
-        pub const _7: bool;
-        pub const _8: bool;
+        pub const _RESERVED_1 = 3;
+        // pub const _6: bool;
+        // pub const _7: bool;
+        // pub const _8: bool;
     }
 }
 
 impl RobotRequestCode {
     pub fn is_normal(&self) -> bool {
         self.get(Self::NORMAL)
+    }
+
+    pub fn is_invalid(&self) -> bool{
+        self.get(Self::_RESERVED_0) > 0 || self.get(Self::_RESERVED_1) > 0
     }
 
     pub fn should_restart_roborio(&self) -> bool {

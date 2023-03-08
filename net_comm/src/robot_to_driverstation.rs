@@ -188,7 +188,7 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
         Ok(match msg_code {
             0x00 => Self {
                 kind: MessageKind::ZeroCode {
-                    msg: Cow::Borrowed(buf.read_str(buf.remaining_packet_data())?),
+                    msg: Cow::Borrowed(buf.read_str(buf.remaining_buf_len())?),
                 },
             },
 
@@ -257,7 +257,7 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
 
                 // regular shmegular message
                 } else {
-                    let msg = buf.read_str(buf.remaining_packet_data())?;
+                    let msg = buf.read_str(buf.remaining_buf_len())?;
                     Self {
                         kind: MessageKind::Message {
                             ms,

@@ -11,6 +11,9 @@ pub enum BufferReaderError {
     },
     ParseUft8Error(std::str::Utf8Error),
     GeneralError(Box<dyn std::error::Error + 'static + Send>),
+    BufferEmptyAssertionFailed{
+        remaining: usize
+    },
 }
 
 impl From<std::str::Utf8Error> for BufferReaderError {
@@ -53,7 +56,7 @@ impl<'a> BufferReader<'a> {
         self.buff.len()
     }
 
-    pub fn remaining_packet_data(&self) -> usize {
+    pub fn remaining_buf_len(&self) -> usize {
         self.buff.len() - self.index
     }
 
@@ -158,6 +161,16 @@ impl<'a> BufferReader<'a> {
     }
 
     pub fn has_more(&self) -> bool {
-        self.remaining_packet_data() != 0
+        self.remaining_buf_len() != 0
+    }
+
+    pub fn assert_empty(&self) -> Result<(), BufferReaderError> {
+        if self.has_more(){
+            Ok(())
+        }else{
+            Err(BufferReaderError::BufferEmptyAssertionFailed{
+                remaining: self.remaining_buf_len()
+            })
+        }
     }
 }

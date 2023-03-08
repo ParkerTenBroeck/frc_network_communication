@@ -215,8 +215,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
         self.last_joystick_data
             .lock()
             .unwrap()
-            .get_joystick(index)
-            .cloned()
+            .get(index).copied()
     }
 }
 

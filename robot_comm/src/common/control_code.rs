@@ -17,6 +17,10 @@ impl ControlCode {
         self.0
     }
 
+    pub fn is_invalid(&self) -> bool{
+        self.get(Self::_RESERVED) > 0
+    }
+
     pub fn is_test(&self) -> bool {
         self.get(Self::TEST)
     }

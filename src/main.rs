@@ -118,7 +118,7 @@ pub fn simulate_roborio() {
                         // bufw.reset();
                     };
 
-                    let axis = if let Some(joystick) = ds.get_joystick(0) {
+                    if let Some(joystick) = ds.get_joystick(0) {
                         send_msg(Message::warn(
                             format!("{:#?}", joystick),
                             Warnings::Unknown(0x12345678),
@@ -126,10 +126,8 @@ pub fn simulate_roborio() {
                             "hijklmnop",
                         ));
                         send_msg(Message::info(format!("{:#?}", joystick)));
-                        joystick.get_axises().clone()
-                    } else {
-                        SuperSmallVec::default()
-                    };
+                        // joystick.get_axises().clone()
+                    }
 
                     if true {
                         send_msg(Message {
@@ -208,10 +206,10 @@ pub fn simulate_roborio() {
         }
 
         if let Some(joystick) = driverstation.get_joystick(0) {
-            let int = (((127.0 - joystick.get_axises()[1] as f32) / 255.0) * 30.0) as u8;
-            let dec = (127 - joystick.get_axises()[5] as i32) as u8;
+            // let int = (((127.0 - joystick.get_axises()[1] as f32) / 255.0) * 30.0) as u8;
+            // let dec = (127 - joystick.get_axises()[5] as i32) as u8;
 
-            driverstation.observe_robot_voltage(RobotVoltage { int, dec })
+            // driverstation.observe_robot_voltage(RobotVoltage { int, dec })
         }
 
         driverstation.request_time();

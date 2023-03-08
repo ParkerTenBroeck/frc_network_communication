@@ -19,7 +19,7 @@ pub struct TimeData {
 impl TimeData {
     pub fn read_time_data(
         &mut self,
-        mut buf: BufferReader<'_>,
+        buf: &mut BufferReader<'_>,
     ) -> Result<(), RobotPacketParseError> {
         let micro = buf.read_u32()?;
         let sec = buf.read_u8()?;
@@ -47,7 +47,7 @@ impl TimeData {
 
     pub fn read_time_zone_date(
         &mut self,
-        mut buf: BufferReader<'_>,
+        buf: &mut BufferReader<'_>,
     ) -> Result<(), RobotPacketParseError> {
         let tz = buf.read_str(buf.total_packet_size())?;
         self.time_zone = Some(

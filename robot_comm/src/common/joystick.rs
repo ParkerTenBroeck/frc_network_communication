@@ -1,26 +1,22 @@
 use util::{
-    buffer_reader::{BufferReader, ReadFromBuff},
+    buffer_reader::{BufferReader, ReadFromBuff, BufferReaderError},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
-    super_small_vec::SuperSmallVec,
 };
 
-use std::fmt::Debug;
+use std::{fmt::Debug, num::NonZeroU8};
 
-use super::error::RobotPacketParseError;
-
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct Joysticks {
-    optionals: [bool; 6],
-    data: [Joystick; 6],
+    data: [Option<Joystick>; 6],
 }
 
 impl<'a> WriteToBuff<'a> for Joysticks {
     type Error = BufferWritterError;
 
     fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
-        for joy in self.data.iter().zip(self.optionals.iter()) {
-            if *joy.1 {
-                joy.0.write_to_buf(buf)?;
+        for joy in self.data.iter() {
+            if let Some(joy) = joy {
+                joy.write_to_buf(buf)?;
             } else {
                 Joystick::default().write_to_buf(buf)?;
             }
@@ -39,35 +35,38 @@ impl Debug for Joysticks {
 
 impl Joysticks {
     pub fn insert(&mut self, index: usize, joystick: Joystick) {
-        self.data[index] = joystick;
-        self.optionals[index] = true;
+        self.data[index] = Some(joystick);
     }
 
     pub fn remove(&mut self, index: usize) -> Option<Joystick> {
-        if self.optionals[index] {
-            self.optionals[index] = false;
-            Some(self.data[index].clone())
-        } else {
-            self.optionals[index] = false;
+        if let Some(joy) = self.data.get_mut(index){
+            joy.take()
+        }else{
             None
         }
     }
 
     pub fn count(&self) -> usize {
-        self.optionals.iter().filter(|p| **p).count()
+        self.data.iter().filter(|p| p.is_some()).count()
     }
 
-    pub fn get_joystick(&self, index: usize) -> Option<&Joystick> {
-        if self.optionals[index] {
-            Some(&self.data[index])
+    pub fn get(&self, index: usize) -> Option<&Joystick> {
+        if let Some(Some(joy)) = self.data.get(index) {
+            Some(joy)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Joystick> {
+        if let Some(Some(joy)) = self.data.get_mut(index) {
+            Some(joy)
         } else {
             None
         }
     }
 }
 
-pub type JoystickAxisData = SuperSmallVec<i8, 15>;
-pub type JoystickPovData = SuperSmallVec<NonNegU16, 15>;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NonNegU16(u16);
@@ -96,35 +95,182 @@ impl NonNegU16 {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Joystick {
-    buttons: JoystickButtonData,
-    axises: JoystickAxisData,
-    povs: JoystickPovData,
+
+
+pub struct ButtonLenOverflow;
+pub struct PovLenOverflow;
+pub struct AxisLenOverflow;
+
+#[derive(Debug)]
+pub enum JoystickParseError{
+    ButtonLenOverflow(u8),
+    PovLenOverflow(u8),
+    AxisLenOverflow(u8),
+    BufferReaderError(BufferReaderError)
 }
+
+
+
+
+impl From<BufferReaderError> for JoystickParseError{
+    fn from(value: BufferReaderError) -> Self {
+        Self::BufferReaderError(value)
+    }
+}
+impl From<AxisLenOverflow> for JoystickParseError{
+    fn from(_: AxisLenOverflow) -> Self {
+        Self::AxisLenOverflow(11)
+    }
+}
+impl From<PovLenOverflow> for JoystickParseError{
+    fn from(_: PovLenOverflow) -> Self {
+        Self::PovLenOverflow(3)
+    }
+}
+impl From<ButtonLenOverflow> for JoystickParseError{
+    fn from(_: ButtonLenOverflow) -> Self {
+        Self::ButtonLenOverflow(33)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Joystick{
+    axis_povs: NonZeroU8,
+    buttons_len: u8,
+    buttons: u32,
+    povs: [NonNegU16; 2],
+    axis: [i8; 10]
+}
+
+impl Debug for Joystick{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let buttons: [bool; 10] = std::array::from_fn(|i|{
+            self.get_button(i as u8).unwrap_or(false)
+        });
+        f.debug_struct("Joystick")
+        .field("buttons", &&buttons[..self.buttons_len() as usize])
+        .field("axis", &&self.axis[..self.axis_len() as usize])
+        .field("povs", &&self.povs[..self.povs_len() as usize])
+        .finish()
+    }
+}
+
+
+impl Joystick{
+    pub fn new() -> Self{
+        Self { 
+            axis_povs: unsafe { NonZeroU8::new_unchecked(0b1000_0000)},
+            buttons_len: 0, 
+            buttons: 0, 
+            povs: [NonNegU16(0);2], 
+            axis: [0;10] 
+        }
+    }
+
+    pub fn axis_len(&self) -> u8{
+        self.axis_povs.get() & 0b1111
+    }
+
+    pub fn povs_len(&self) -> u8{
+        (self.axis_povs.get() >> 4) & 0b111
+    }
+
+    pub fn buttons_len(&self) -> u8{
+        self.buttons_len
+    }
+
+    #[must_use]
+    pub fn push_button(&mut self, button: bool) -> Result<(), ButtonLenOverflow>{
+        if self.buttons_len < 32{
+            self.buttons |= (button as u32) << self.buttons_len;
+            self.buttons_len += 1;
+            Ok(())
+        }else{
+            Err(ButtonLenOverflow)
+        }
+    }
+
+    #[must_use]
+    pub fn push_axis(&mut self, axis: i8) -> Result<(), AxisLenOverflow>{
+        let len = self.axis_len();
+        if  len < 10{
+            unsafe{
+                *self.axis.get_unchecked_mut(len as usize) = axis;
+                self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() + 1);
+            }
+            Ok(())
+        }else{
+            Err(AxisLenOverflow)
+        }
+    }
+
+    #[must_use]
+    pub fn push_pov(&mut self, pov: NonNegU16) -> Result<(), PovLenOverflow>{
+        let len = self.povs_len();
+        if len < 2{
+            unsafe{
+                *self.povs.get_unchecked_mut(len as usize) = pov;
+                self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() + (1 << 4));
+            }
+            Ok(())
+        }else{
+            Err(PovLenOverflow)
+        }
+    }
+
+    pub fn get_button(&self, button: u8) -> Option<bool>{
+        if button < self.buttons_len(){
+            Some(self.buttons >> button & 1 == 1)
+        }else{
+            None
+        }
+    }
+
+    pub fn get_pov(&self, pov: u8) -> Option<NonNegU16>{
+        if pov < self.povs_len(){
+            unsafe {
+                Some(*self.povs.get_unchecked(pov as usize))
+            }
+        }else{
+            None
+        }
+    }
+
+    pub fn get_axis(&self, axis: u8) -> Option<i8>{
+        if axis < self.axis_len(){
+            unsafe {
+                Some(*self.axis.get_unchecked(axis as usize))
+            }
+        }else{
+            None
+        }
+    }
+}
+
+impl Default for Joystick {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
 
 impl<'a> WriteToBuff<'a> for Joystick {
     type Error = BufferWritterError;
 
     fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
-        let size = (self.buttons.get_num_buttons() + 7) / 8
-            + 1
-            + self.axises.len()
-            + 1
-            + self.povs.len() * 2
-            + 1;
+        let mut buf = buf.create_u8_size_guard()?;
 
-        buf.write_u8(size as u8)?;
         buf.write_u8(12)?;
 
-        buf.write_u8(self.axises.len() as u8)?;
-        for i in 0..self.axises.len() {
-            buf.write_u8(self.axises[i] as u8)?;
+        buf.write_u8(self.axis_len())?;
+        for i in 0..self.axis_len() {
+            buf.write_u8(self.get_axis(i).unwrap() as u8)?;
         }
 
-        buf.write_u8(self.buttons.get_num_buttons() as u8)?;
-        for p in (0..((self.buttons.get_num_buttons() + 7) / 8)).rev() {
-            buf.write_u8((self.buttons.data >> (p * 8)) as u8)?;
+        buf.write_u8(self.buttons_len())?;
+        for p in (0..((self.buttons_len() + 7) / 8)).rev() {
+            buf.write_u8((self.buttons >> (p * 8)) as u8)?;
         }
 
         buf.write_u8(self.povs.len() as u8)?;
@@ -137,198 +283,33 @@ impl<'a> WriteToBuff<'a> for Joystick {
 }
 
 impl<'a> ReadFromBuff<'a> for Joystick {
-    type Error = RobotPacketParseError;
+    type Error = JoystickParseError;
 
     fn read_from_buff(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
-        let mut axises = JoystickAxisData::default();
+        let mut joy = Joystick::default();
+        
         for axis in buf.read_short_u8_arr()? {
-            axises.push(*axis as i8);
+            joy.push_axis(*axis as i8)?;
         }
 
-        let buttons = buf.read_u8()?;
-        let mut button_data = 0;
-        for _ in 0..((buttons + 7) / 8) {
-            button_data = (button_data << 8) | buf.read_u8()? as u64;
+        let buttons_len = buf.read_u8()?;
+        if buttons_len > 32{
+            //TODO: return an error
         }
-        let buttons = JoystickButtonData {
-            length: buttons,
-            data: button_data,
-        };
+        for _ in 0..((buttons_len + 7) / 8) {
+            joy.buttons = (joy.buttons << 8) | buf.read_u8()? as u32;
+        }
+        joy.buttons_len = buttons_len;
+        
 
-        let mut povs = JoystickPovData::default();
         for _ in 0..buf.read_u8()? {
-            let pov = buf.read_u16()?;
-            povs.push(NonNegU16::new(pov))
+            joy.push_pov(NonNegU16::new(buf.read_u16()?))?;
         }
 
-        if buf.has_more() {
-            Err(RobotPacketParseError::InvalidDataLength(
-                buf.raw_buff().len(),
-            ))?
-        }
+        buf.assert_empty()?;
 
-        Ok(Joystick {
-            buttons,
-            axises,
-            povs,
-        })
+        Ok(joy)
     }
 }
 
-impl Joystick {
-    pub fn get_buttons(&self) -> &JoystickButtonData {
-        &self.buttons
-    }
 
-    pub fn get_axises(&self) -> &JoystickAxisData {
-        &self.axises
-    }
-
-    pub fn get_povs(&self) -> &JoystickPovData {
-        &self.povs
-    }
-}
-
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct JoystickButtonData {
-    length: u8,
-    data: u64,
-}
-
-impl Debug for JoystickButtonData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut t = f.debug_struct("JoystickButtonData");
-        t.field("length", &self.length);
-
-        for i in 0..self.length {
-            t.field(&format!("button_{i}"), &self.get_button(i as usize));
-        }
-        t.finish()
-    }
-}
-
-impl JoystickButtonData {
-    pub fn get_num_buttons(&self) -> usize {
-        self.length as usize
-    }
-
-    pub fn get_button(&self, button: usize) -> bool {
-        (self.data >> button) & 1 == 1
-    }
-}
-
-// #[derive(Clone)]
-// pub struct JoystickAxisData<const MAX: usize = 23> {
-//     data: SuperSmallVec<i8, MAX>,
-// }
-
-// impl Debug for JoystickAxisData {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let mut t = f.debug_struct("JoystickAxisData");
-//         t.field("length", &self.get_num_axis());
-
-//         for i in 0..self.get_num_axis() {
-//             t.field(&format!("axis_{i}"), &self.get_axis(i));
-//         }
-//         t.finish()
-//     }
-// }
-
-// impl<const L_SIZE: usize> Default for JoystickAxisData<L_SIZE> {
-//     fn default() -> Self {
-//         Self { data: SuperSmallVec::new() }
-//     }
-// }
-
-// impl<const L_SIZE: usize> JoystickAxisData<L_SIZE> {
-//     pub fn get_num_axis(&self) -> usize {
-//         match self {
-//             JoystickAxisData::Local(size, _) => *size as usize,
-//             JoystickAxisData::Heap(buf) => buf.len(),
-//         }
-//     }
-
-//     pub fn get_axis(&self, axis: usize) -> i8 {
-//         match self {
-//             JoystickAxisData::Local(_, buf) => buf[axis],
-//             JoystickAxisData::Heap(buf) => buf[axis],
-//         }
-//     }
-
-//     pub fn push_axis(&mut self, axis: i8) {
-//         match self {
-//             JoystickAxisData::Local(len, buf) => {
-//                 if (*len as usize) >= L_SIZE {
-//                     let mut vec = buf.to_vec();
-//                     vec.push(axis);
-//                     *self = JoystickAxisData::Heap(vec);
-//                     return;
-//                 }
-//                 buf[*len as usize] = axis;
-//                 *len += 1;
-//             }
-//             JoystickAxisData::Heap(buf) => {
-//                 buf.push(axis);
-//             }
-//         }
-//     }
-// }
-
-// #[derive(Clone)]
-// pub enum JoystickPovData<const L_SIZE: usize = 8> {
-//     Local(u8, [Option<NonZeroU16>; L_SIZE]),
-//     Heap(Vec<Option<NonZeroU16>>),
-// }
-
-// impl Debug for JoystickPovData {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let mut t = f.debug_struct("JoystickPovData");
-//         t.field("length", &self.get_num_pov());
-
-//         for i in 0..self.get_num_pov() {
-//             t.field(&format!("axis_{i}"), &self.get_pov(i));
-//         }
-//         t.finish()
-//     }
-// }
-
-// impl<const L_SIZE: usize> Default for JoystickPovData<L_SIZE> {
-//     fn default() -> Self {
-//         Self::Local(0, [None; L_SIZE])
-//     }
-// }
-
-// impl<const L_SIZE: usize> JoystickPovData<L_SIZE> {
-//     pub fn get_num_pov(&self) -> usize {
-//         match self {
-//             JoystickPovData::Local(size, _) => *size as usize,
-//             JoystickPovData::Heap(buf) => buf.len(),
-//         }
-//     }
-
-//     pub fn get_pov(&self, index: usize) -> Option<u16> {
-//         match self {
-//             JoystickPovData::Local(_, buf) => buf[index].map(|val| val.get().wrapping_sub(1)),
-//             JoystickPovData::Heap(buf) => buf[index].map(|val| val.get().wrapping_sub(1)),
-//         }
-//     }
-
-//     pub fn push_raw_pov(&mut self, pov: u16) {
-//         let pov = NonZeroU16::new(pov.wrapping_add(1));
-//         match self {
-//             JoystickPovData::Local(len, buf) => {
-//                 if (*len as usize) >= L_SIZE {
-//                     let mut vec = buf.to_vec();
-//                     vec.push(pov);
-//                     *self = JoystickPovData::Heap(vec);
-//                     return;
-//                 }
-//                 buf[*len as usize] = pov;
-//                 *len += 1;
-//             }
-//             JoystickPovData::Heap(buf) => {
-//                 buf.push(pov);
-//             }
-//         }
-//     }
-// }

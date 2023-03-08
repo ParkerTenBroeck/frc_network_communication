@@ -44,9 +44,9 @@ impl MessageHandler for SystemConsoleOutput {
             MessageKind::Report { kind } => {
                 println!("Report: {kind:?}")
             }
-            MessageKind::Unknown0x0D { .. } => {
-                // println!("Unknown0x0D: {_data:?}")
-            }
+            MessageKind::PowerAndCan { .. } => {
+
+            },
         }
     }
 

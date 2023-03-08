@@ -131,7 +131,7 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
             tag_comm_version: {
                 let com = buf.read_u8()?;
                 if com != 1 {
-                    Err(RobotPacketParseError::InvalidCommVersion(com))?
+                    Err(RobotPacketParseError::RobotToDriverInvalidCommVersion(com))?
                 }
                 com
             },
@@ -141,7 +141,7 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
             request: DriverstationRequestCode::from_bits(buf.read_u8()?),
         };
 
-        if buf.remaining_packet_data() > 0 {
+        if buf.remaining_buf_len() > 0 {
             //println!("remaining: {:?}", buf.read_amount(buf.remaining_packet_data())?);
         }
 
@@ -185,7 +185,7 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
 
                     println!("uti %{utilization:.2}, bus_off: {bus_off}, tx_full: {tx_full}, rx: {recieve}, ts: {transmit}");
                 }
-                invalid => Err(RobotPacketParseError::InvalidTag(invalid))?,
+                invalid => Err(RobotPacketParseError::RobotToDriverInvalidUsageTag(invalid))?,
             }
         }
 
