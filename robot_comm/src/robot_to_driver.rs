@@ -1,5 +1,5 @@
 use util::{
-    buffer_reader::{BufferReader, ReadFromBuff},
+    buffer_reader::{ReadFromBuff},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
@@ -9,7 +9,7 @@ use crate::common::{
     robot_voltage::RobotVoltage,
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct RobotToDriverstationPacket {
     pub packet: u16,
     pub tag_comm_version: u8,
@@ -28,6 +28,7 @@ pub struct RobotToDriverCpuUsage<const CPUS: usize>{
 }
 
 #[repr(packed(1))]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct CpuUsage{
     pub user: f32,
     pub _unknown1: f32,
@@ -35,10 +36,12 @@ pub struct CpuUsage{
     pub system: f32,
 }
 
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct RobotToDriverRamUsage{
     pub bytes_used: u64,
 }
 
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct RobotToDriverDiskUsage{
     pub bytes_used: u64,
 }
@@ -50,7 +53,7 @@ pub enum UsageReport<'a>{
     CpuUsage(&'a [CpuUsage])
 }
 
-#[derive(Default)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct RobotToDriverCanUsage{
     pub utilization: f32,
     pub bus_off: u32,
@@ -231,9 +234,14 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
         };
 
         while buf.has_more() {
-            let length = buf.read_u8()? - 1;
+            let mut buf = buf.sized_u8_reader()?;
+            if buf.remaining_buf_len() == 0{
+                continue;
+            }
             let extra_id = buf.read_u8()?;
-            let mut buf = BufferReader::new(buf.read_amount(length as usize)?);
+            // let length = buf.read_u8()? - 1;
+            // let extra_id = buf.read_u8()?;
+            // let mut buf = BufferReader::new(buf.read_amount(length as usize)?);
             //println!("id: {extra_id} -> {:?}", buf.raw_buff());
             match extra_id {
                 4 => {
@@ -286,5 +294,36 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
         }
 
         Ok(base)
+    }
+}
+
+#[allow(unused)]
+mod tests{
+    use util::{robot_voltage::RobotVoltage, buffer_writter::{WriteToBuff, BufferWritter, SliceBufferWritter}, buffer_reader::{BufferReader, ReadFromBuff}};
+
+    use crate::common::{request_code::{RobotRequestCode, DriverstationRequestCode}, roborio_status_code::RobotStatusCode, control_code::ControlCode};
+
+    use super::RobotToDriverstationPacket;
+
+
+    #[test]
+    pub fn packet_write_and_read(){
+        let packet = RobotToDriverstationPacket{
+            packet: 0x1234,
+            tag_comm_version: 1,
+            control_code: *ControlCode::new().set_enabled().set_autonomus().set_fms_attached(true),
+            status: *RobotStatusCode::new().set_has_robot_code(true),
+            battery: RobotVoltage{int: 5, dec: 50},
+            request: *DriverstationRequestCode::new().set_request_time(true),
+        };
+
+        let mut buf = [0; 10];
+        let mut bufw = SliceBufferWritter::new(&mut buf);
+        packet.write_to_buf(&mut bufw).expect("Failed to write to buffer");
+
+        let mut bufr = BufferReader::new(bufw.curr_buf());
+        let read_packet = RobotToDriverstationPacket::read_from_buff(&mut bufr).expect("Failed to read packet from buffer");
+
+        assert_eq!(read_packet, packet, "Packets do not match when written and read from a buffer") 
     }
 }

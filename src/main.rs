@@ -87,7 +87,13 @@ pub fn simulate_roborio() {
                                 println!("{controller:#?}");
                             }
                             0x07 => {
-                                println!("0x07 => {:?}", buf.raw_buff());
+                                // match info
+                                let comp = buf.read_short_str()?;
+                                // 0 None, 1 Practis, 2 quals, 3 elims
+                                let match_style = buf.read_u8()?;
+                                let match_number = buf.read_u16()?;
+                                let replay_number = buf.read_u8()?;
+                                println!("0x07 => Comp: {comp}, match: {match_style}, match#: {match_number}, replay#: {replay_number}");
                             }
                             0x0E => {
                                 //Game Data
