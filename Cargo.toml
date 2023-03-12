@@ -9,7 +9,12 @@ edition = "2021"
 asm = "0.3.0"
 net_comm ={ path = "./net_comm" }
 robot_comm = { path = "./robot_comm" }
-# eframe = "*"
+eframe = "*"
+gilrs = "*"
+stick = "0.13"
+smol = "*"
+pasts = "0.8"
+tokio = "*"
 
 [workspace]
 members = [

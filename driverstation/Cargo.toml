@@ -9,6 +9,7 @@ edition = "2021"
 util = { path = "../util" }
 robot_comm = { path = "../robot_comm" }
 net_comm = { path = "../net_comm" }
+gilrs = "0.10.1"
 
 
 [features]

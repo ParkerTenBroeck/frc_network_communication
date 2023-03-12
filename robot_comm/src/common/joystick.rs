@@ -110,8 +110,6 @@ pub enum JoystickParseError{
 }
 
 
-
-
 impl From<BufferReaderError> for JoystickParseError{
     fn from(value: BufferReaderError) -> Self {
         Self::BufferReaderError(value)
@@ -144,7 +142,7 @@ pub struct Joystick{
 
 impl Debug for Joystick{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let buttons: [bool; 10] = std::array::from_fn(|i|{
+        let buttons: [bool; 32] = std::array::from_fn(|i|{
             self.get_button(i as u8).unwrap_or(false)
         });
         f.debug_struct("Joystick")

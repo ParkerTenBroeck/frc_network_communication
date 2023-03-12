@@ -41,8 +41,11 @@
 //     }
 // }
 
+pub type Girls = Gilrs;
+
 use std::sync::Arc;
 
+use gilrs::Gilrs;
 use robot_comm::{
     common::{
         alliance_station::AllianceStation, joystick::Joystick, request_code::RobotRequestCode,

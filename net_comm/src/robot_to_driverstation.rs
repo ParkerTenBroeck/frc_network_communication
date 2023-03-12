@@ -55,7 +55,7 @@ pub enum MessageKind<'a> {
         loc: Cow<'a, str>,
         stack: Cow<'a, str>,
     },
-    PowerAndCan {
+    UnderlineAnd5VDisable {
         disable_5v: u16,
         /// when this is 2 the top row on the power/can metrics has a red underline
         top_signal: u8,
@@ -63,6 +63,11 @@ pub enum MessageKind<'a> {
         second_top_signal: u8,
         /// when this is 2 the third top row on the power/can metrics has a red underline
         third_top_signal: u8,
+    },
+    ShortInfo {
+        short_6v: u16,
+        short_5v: u16,
+        short_3_3v: u16,
     },
 }
 
@@ -73,7 +78,8 @@ impl<'a> MessageKind<'a> {
             MessageKind::Report { .. } => 0x0A,
             MessageKind::Error { .. } | MessageKind::Warning { .. } => 0x0B,
             MessageKind::Message { .. } => 0x0C,
-            MessageKind::PowerAndCan { .. } => 0x0D,
+            MessageKind::UnderlineAnd5VDisable { .. } => 0x0D,
+            MessageKind::ShortInfo { .. } => 0x05,
         }
     }
 }
@@ -185,7 +191,7 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
         // tells us how to treat the rest of the data
         let msg_code = buf.read_u8()?;
 
-        Ok(match msg_code {
+        let ok = Ok(match msg_code {
             0x00 => Self {
                 kind: MessageKind::ZeroCode {
                     msg: Cow::Borrowed(buf.read_str(buf.remaining_buf_len())?),
@@ -268,15 +274,29 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
                 }
             }
             0x0D => Self {
-                kind: MessageKind::PowerAndCan {
+                kind: MessageKind::UnderlineAnd5VDisable {
                     disable_5v: buf.read_u16()?,
                     top_signal: buf.read_u8()?,
                     second_top_signal: buf.read_u8()?,
                     third_top_signal: buf.read_u8()?,
                 },
             },
-            _ => Err(MessageReadError::InvalidMsgCode(msg_code))?,
-        })
+            0x05 => {
+                Self{
+                    kind: MessageKind::ShortInfo { 
+                        short_6v: buf.read_u16()?, 
+                        short_5v: buf.read_u16()?, 
+                        short_3_3v: buf.read_u16()? 
+                    }
+                }
+            }
+            _ => {
+                println!("{:?}", buf.read_amount(buf.remaining_buf_len())?);
+                Err(MessageReadError::InvalidMsgCode(msg_code))?
+            },
+        });
+        buf.assert_empty()?;
+        ok
     }
 }
 
@@ -346,7 +366,7 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                 };
                 buf.write_short_str(msg)?;
             }
-            MessageKind::PowerAndCan {
+            MessageKind::UnderlineAnd5VDisable {
                 disable_5v,
                 top_signal,
                 second_top_signal,
@@ -357,6 +377,12 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                 buf.write_u8(*second_top_signal)?;
                 buf.write_u8(*third_top_signal)?;
             }
+            MessageKind::ShortInfo { short_6v, short_5v, short_3_3v } => {
+                // buf.write_buf(&*data)?;
+                buf.write_u16(*short_6v)?;
+                buf.write_u16(*short_5v)?;
+                buf.write_u16(*short_3_3v)?;
+            },
         }
         Ok(())
     }

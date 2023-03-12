@@ -13,12 +13,13 @@ pub enum RobotPacketParseError {
     InvalidControlCode(u8),
     InvalidRequestCode(u8),
     InvalidStationCode(u8),
-    InvalidTimeData,
     JoystickParseError(JoystickParseError),
     DriverToRobotInvalidExtraTag(u8),
     // robot to driver
     RobotToDriverInvalidCommVersion(u8),
     RobotToDriverInvalidUsageTag(u8),
+    InvalidTimeZoneData,
+    InvalidTimeData,
     
 }
 

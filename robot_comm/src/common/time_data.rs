@@ -52,7 +52,7 @@ impl TimeData {
         let tz = buf.read_str(buf.total_packet_size())?;
         self.time_zone = Some(
             tz.parse()
-                .map_err(|_| RobotPacketParseError::InvalidTimeData)?,
+                .map_err(|_| RobotPacketParseError::InvalidTimeZoneData)?,
         );
         Ok(())
     }

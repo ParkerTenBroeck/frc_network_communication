@@ -72,8 +72,57 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         buf.write_u8(self.battery.dec)?;
         buf.write_u8(self.request.to_bits())?;
 
+        // if true{
+        //     return Ok(());
+        // }
+        // let counter = self.packet as u8;
+        // {
+        //     let mut buf = buf.create_u8_size_guard()?;
+        //                     // can usage
+        //                     buf.write_u8(0x0e)?;
+
+        //                     // utilization % [0, 1.0]
+        //                     buf.write_f32(counter as f32 / 255.0)?;
+        //                     // Bus Off
+        //                     buf.write_u32(5)?;
+        //                     // TX Full
+        //                     buf.write_u32(10)?;
+        //                     // Recieve
+        //                     buf.write_u8(23)?;
+        //                     // Transmit
+        //                     buf.write_u8(32)?;
+        // }
+
+        // let mut buf2 = buf.create_u8_size_guard()?;
+
+        //         // pdp stuff power in possibly amps or something?
+        //         buf2.write_u8(0x08)?;
+        //         // buf.write_buf(&[self.packet as u8; 2])?;
+        //         // let mut data = [1u8; 22];
+        //         // for (index, b) in data.iter_mut().enumerate(){
+        //         //     *b = (index.wrapping_add(self.packet as usize)) as u8
+        //         // }
+        //         // buf.write_buf(&data)?;
+        //         buf2.write_u8(0)?;
+        //         buf2.write_u8(0)?;
+        //         buf2.write_u8(0)?;
+        //         buf2.write_u8(counter)?;
+        //         // for i in 0u32..10{
+        //         //     buf.write_u16( 0)?;
+        //         // }
+        //         // buf.write_buf(&[0;3])?;
+        //         let wbuf = buf2.write(26 - buf2.curr_buf_len())?;
+                    
+        //         wbuf.fill(0);
+        //         println!("{wbuf:?}");
+        //         drop(buf2);
+
+        // buf.write_u8(0x08)?;
+        // // buf.write_buf(&[0; 22])?;
+        // // buf.write_buf(&[255, 171, 85])?;
+        // buf.write_buf(&[self.packet as u8; 25])?;
         let mut buf = buf.create_u8_size_guard()?;
-        match self.packet & 3 {
+        match self.packet & 7 {
             0 => {
                 // ram
                 buf.write_u8(6)?;
@@ -86,12 +135,12 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
                 // num bytes free
                 buf.write_u64((self.packet as u64) << 31)?;
             }
-            2 => {
+            25 => {
                 // can usage
                 buf.write_u8(0x0e)?;
 
                 // utilization % [0, 1.0]
-                buf.write_f32(1.0)?;
+                buf.write_f32((self.packet % 200) as f32 / 200.0)?;
                 // Bus Off
                 buf.write_u32(5)?;
                 // TX Full
@@ -101,16 +150,56 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
                 // Transmit
                 buf.write_u8(32)?;
             }
+            12 => {
+                // pdp stuff power in possibly amps or something?
+                buf.write_u8(0x08)?;
+                // buf.write_buf(&[self.packet as u8; 2])?;
+                // let mut data = [1u8; 22];
+                // for (index, b) in data.iter_mut().enumerate(){
+                //     *b = (index.wrapping_add(self.packet as usize)) as u8
+                // }
+                // buf.write_buf(&data)?;
+                buf.write_u8(0)?;
+                buf.write_u8(0)?;
+                buf.write_u8(0)?;
+                buf.write_u8(self.packet  as u8)?;
+                // for i in 0u32..10{
+                //     buf.write_u16( 0)?;
+                // }
+                // buf.write_buf(&[0;3])?;
+                let buf = buf.write(26 - buf.curr_buf_len())?;
+                    
+                buf.fill(0);
+                // println!("{buf:?}");
+                // buf.write_buf(&[255, 171, 85])?;
+
+                // 8 => {
+                //     let zeros = buf.read_amount(22)?;
+                //     let ff = buf.read_u8()?;
+                //     let num = buf.read_u16()? as i16;
+                //     println!("8 usage: {:?}, 0xff: {:02X}, num: {}", zeros, ff, num);
+                
+                // }
+                // 9 => {
+                //     println!("9 usage: {:?}", buf.read_amount(buf.remaining_buf_len())?)
+                // }
+                // println!("bruh 8");
+            }
+            4 => {
+                // buf.write_u8(0x09)?;
+                // buf.write_buf(&[66; 9])?;
+                // println!("bruh 9");
+            }
             _ => {
                 buf.write_u8(0x05)?;
 
                 let num = 2;
                 buf.write_u8(num + 5)?;
                 for _ in 0..num{
-                    buf.write_f32(0.0)?;
-                    buf.write_f32(100.0)?;
-                    buf.write_f32(0.0)?;
-                    buf.write_f32(0.0)?;
+                    buf.write_f32(11.0)?;
+                    buf.write_f32(22.0)?;
+                    buf.write_f32(33.0)?;
+                    buf.write_f32(04.0)?;
                 }
             }
         }
@@ -141,10 +230,6 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
             request: DriverstationRequestCode::from_bits(buf.read_u8()?),
         };
 
-        if buf.remaining_buf_len() > 0 {
-            //println!("remaining: {:?}", buf.read_amount(buf.remaining_packet_data())?);
-        }
-
         while buf.has_more() {
             let length = buf.read_u8()? - 1;
             let extra_id = buf.read_u8()?;
@@ -171,6 +256,16 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
                     let usage = buf.read_u64()?;
                     println!("ram usage: {}", usage)
                 }
+                8 => {
+                    let zeros = buf.read_amount(22)?;
+                    let ff = buf.read_u8()?;
+                    let num = buf.read_u16()? as i16;
+                    println!("8 usage: {:?}, 0xff: {:02X}, num: {}", zeros, ff, num);
+                
+                }
+                9 => {
+                    println!("9 usage: {:?}", buf.read_amount(buf.remaining_buf_len())?)
+                }
                 14 => {
                     // utilization % [0, 1.0]
                     let utilization = buf.read_f32()?;
@@ -187,6 +282,7 @@ impl<'a> ReadFromBuff<'a> for RobotToDriverstationPacket {
                 }
                 invalid => Err(RobotPacketParseError::RobotToDriverInvalidUsageTag(invalid))?,
             }
+            buf.assert_empty()?;
         }
 
         Ok(base)

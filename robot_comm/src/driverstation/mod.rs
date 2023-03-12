@@ -243,6 +243,10 @@ impl RobotComm {
         self.robot_ip_condvar.notify_all();
     }
 
+    pub fn get_robot_ip(&self) -> Option<IpAddr>{
+        *self.robot_ip.lock().unwrap()
+    }
+
     pub fn get_observed_status(&self) -> RobotStatusCode {
         self.other_data.lock().unwrap().observed_state
     }

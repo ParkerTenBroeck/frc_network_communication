@@ -44,8 +44,11 @@ impl MessageHandler for SystemConsoleOutput {
             MessageKind::Report { kind } => {
                 println!("Report: {kind:?}")
             }
-            MessageKind::PowerAndCan { .. } => {
+            MessageKind::UnderlineAnd5VDisable { .. } => {
 
+            },
+            MessageKind::ShortInfo { short_6v, short_5v, short_3_3v } => {
+                println!("Shorts: 6v: {short_6v}, 5v: {short_5v}, 3.3v: {short_3_3v}")
             },
         }
     }
