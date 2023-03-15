@@ -1,5 +1,5 @@
 use util::{
-    buffer_reader::{BufferReader, ReadFromBuff},
+    buffer_reader::{BufferReader, ReadFromBuf},
     buffer_writter::{BufferWritter, WriteToBuff},
 };
 
@@ -40,10 +40,10 @@ impl Default for DriverstationToRobotCorePacketDate {
     }
 }
 
-impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
+impl<'a> ReadFromBuf<'a> for DriverstationToRobotPacket {
     type Error = RobotPacketParseError;
 
-    fn read_from_buff(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
         let mut read = Self {
             core_data: DriverstationToRobotCorePacketDate {
                 packet: buf.read_u16()?,
@@ -62,19 +62,26 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
             joystick_data: Joysticks::default(),
         };
 
-        if read.core_data.control_code.is_invalid(){
-            Err(RobotPacketParseError::InvalidControlCode(read.core_data.control_code.to_bits()))?
+        if read.core_data.control_code.is_invalid() {
+            Err(RobotPacketParseError::InvalidControlCode(
+                read.core_data.control_code.to_bits(),
+            ))?
         }
-        if read.core_data.request_code.is_invalid(){
-            Err(RobotPacketParseError::InvalidRequestCode(read.core_data.request_code.to_bits()))?
+        if read.core_data.request_code.is_invalid() {
+            Err(RobotPacketParseError::InvalidRequestCode(
+                read.core_data.request_code.to_bits(),
+            ))?
         }
-
 
         while buf.has_more() {
             let length = buf.read_u8()? - 1;
             let extra_id = buf.read_u8()?;
             let mut buf = BufferReader::new(buf.read_amount(length as usize)?);
             match extra_id {
+                7 => {
+                    // countdown
+                    println!("Countdown: {:?}", buf.read_remaining())
+                }
                 15 => {
                     read.time_data.read_time_data(&mut buf)?;
                 }
@@ -84,7 +91,7 @@ impl<'a> ReadFromBuff<'a> for DriverstationToRobotPacket {
                 12 => {
                     read.joystick_data.insert(
                         read.joystick_data.count(),
-                        Joystick::read_from_buff(&mut buf)?,
+                        Joystick::read_from_buf(&mut buf)?,
                     );
                 }
                 invalid => Err(RobotPacketParseError::DriverToRobotInvalidExtraTag(invalid))?,

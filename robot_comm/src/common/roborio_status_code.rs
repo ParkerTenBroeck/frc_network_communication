@@ -16,8 +16,7 @@ mycelium_bitfield::bitfield! {
 }
 
 impl RobotStatusCode {
-
-    pub fn set_has_robot_code(&mut self, has_robot_code: bool) -> &mut Self{
+    pub fn set_has_robot_code(&mut self, has_robot_code: bool) -> &mut Self {
         self.set(Self::ROBOT_HAS_CODE, has_robot_code);
         self
     }

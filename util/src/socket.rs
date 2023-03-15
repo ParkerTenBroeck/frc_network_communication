@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer_reader::{BufferReader, ReadFromBuff},
+    buffer_reader::{BufferReader, ReadFromBuf},
     buffer_writter::{BufferWritter, WriteToBuff},
 };
 
@@ -145,8 +145,8 @@ impl<T: std::fmt::Debug> From<std::io::Error> for SocketWriteError<T> {
 impl Socket {
     pub fn read<'a, T>(&mut self, buf: &'a mut [u8]) -> Result<Option<T>, SocketReadError<T::Error>>
     where
-        T: ReadFromBuff<'a>,
-        <T as ReadFromBuff<'a>>::Error: std::error::Error + 'static,
+        T: ReadFromBuf<'a>,
+        <T as ReadFromBuf<'a>>::Error: std::error::Error + 'static,
     {
         let read = match self.socket.recv_from(buf) {
             Ok(read) => {
@@ -171,7 +171,7 @@ impl Socket {
             let got = &buf[..read];
             let mut buff = BufferReader::new(got);
 
-            let rec = match T::read_from_buff(&mut buff) {
+            let rec = match T::read_from_buf(&mut buff) {
                 Ok(ok) => Some(ok),
                 Err(err) => return Err(SocketReadError::Buffer(err)),
             };

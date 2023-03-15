@@ -9,11 +9,11 @@
 pub enum ControllerInfo<'a> {
     None {
         id: u8,
-        _b3: u8,
     },
     Some {
         id: u8,
-        _b3: u8,
+        js_type: JoystickType,
+        is_xbox: bool,
         name: Cow<'a, str>,
         axis: SuperSmallVec<u8, 11>,
         // axis: u8,
@@ -21,6 +21,28 @@ pub enum ControllerInfo<'a> {
         buttons: u8,
         povs: u8,
     },
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash)]
+pub enum JoystickType {
+    XInputUnknwon = 0,
+    XInputGamepad = 1,
+    XInputWheel = 2,
+    XInputArcade = 3,
+    XInputFlightStick = 4,
+    XInputDancePad = 5,
+    XInputGuitar = 6,
+    XInputGitar2 = 7,
+    XInputDrumKit = 8,
+    XInputGuitar3 = 11,
+    XInputArcadePad = 19,
+    HIDJoystick = 20,
+    HIDGamepad = 21,
+    HIDDriving = 22,
+    HIDFlight = 23,
+    HID1stPerson = 24,
+    Unknown(u8),
 }
 
 pub fn simulate_roborio() {
@@ -62,14 +84,15 @@ pub fn simulate_roborio() {
                         let mut buf = buf.read_known_length_u16().unwrap();
                         match buf.read_u8()? {
                             0x02 => {
-                                let id = buf.read_u8()?;
-                                let _b3 = buf.read_u8()?;
+                                let index = buf.read_u8()?;
+                                let is_xbox = buf.read_u8()? == 1;
 
                                 // let num_axis;
                                 let controller = if buf.read_u8()? == 1 {
                                     ControllerInfo::Some {
-                                        id,
-                                        _b3,
+                                        id: index,
+                                        is_xbox,
+                                        js_type: todo!(),
                                         name: Cow::Borrowed(buf.read_short_str()?),
                                         axis: {
                                             let mut axis = SuperSmallVec::new();
@@ -82,7 +105,7 @@ pub fn simulate_roborio() {
                                         povs: buf.read_u8()?,
                                     }
                                 } else {
-                                    ControllerInfo::None { id, _b3 }
+                                    ControllerInfo::None { id: index }
                                 };
                                 println!("{controller:#?}");
                             }
@@ -97,7 +120,10 @@ pub fn simulate_roborio() {
                             }
                             0x0E => {
                                 //Game Data
-                                println!("GameData => {:?}", buf.read_str(buf.remaining_buf_len())?);
+                                println!(
+                                    "GameData => {:?}",
+                                    buf.read_str(buf.remaining_buf_len())?
+                                );
                             }
                             val => {
                                 println!("Unknown data tag: {val:02X}")
@@ -138,26 +164,24 @@ pub fn simulate_roborio() {
 
                     if send_info {
                         send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::Report {
-                                kind: net_comm::robot_to_driverstation::ReportKind::ImageVersion(
+                            kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
+                                kind: net_comm::robot_to_driverstation::VersionInfo::ImageVersion(
                                     "Holy Cow It's Rust".into(),
                                 ),
                             },
                         });
 
                         send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::Report {
-                                kind: net_comm::robot_to_driverstation::ReportKind::LibCVersion(
+                            kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
+                                kind: net_comm::robot_to_driverstation::VersionInfo::LibCVersion(
                                     "Lib :3 Rust".into(),
                                 ),
                             },
                         });
 
                         send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::Report {
-                                kind: net_comm::robot_to_driverstation::ReportKind::Empty(
-                                    "".into(),
-                                ),
+                            kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
+                                kind: net_comm::robot_to_driverstation::VersionInfo::Empty,
                             },
                         });
 
@@ -170,11 +194,20 @@ pub fn simulate_roborio() {
                             },
                         });
 
-                        send_msg(Message { kind: MessageKind::ShortInfo{
-                           short_3_3v: 12,
-                           short_5v: 5,
-                           short_6v: 6,
-                        } })
+                        send_msg(Message {
+                            kind: net_comm::robot_to_driverstation::MessageKind::DisableFaults {
+                                comms: 69,
+                                fault_12v: 55,
+                            },
+                        });
+
+                        send_msg(Message {
+                            kind: MessageKind::RailFaults {
+                                short_3_3v: 12,
+                                short_5v: 5,
+                                short_6v: 6,
+                            },
+                        })
                     }
                     // for _ in 0..20{
 
@@ -236,24 +269,29 @@ use std::{
     error::Error,
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, TcpListener},
-    sync::Arc, pin::Pin,
+    pin::Pin,
+    sync::Arc,
 };
 
 use eframe::egui::{self, Context};
 use gilrs::Gilrs;
 use net_comm::{
-    driverstation::{console_message::SystemConsoleOutput, message_handler::MessageConsole},
+    driverstation::{
+        console_message::{Ignore, SystemConsoleOutput},
+        message_handler::MessageConsole,
+    },
     robot_to_driverstation::{error::Warnings, Message, MessageKind},
     robot_voltage::RobotVoltage,
 };
 use robot_comm::{
-    common::{request_code::RobotRequestCode, joystick::Joystick},
+    common::{joystick::Joystick, request_code::RobotRequestCode},
     driverstation::RobotComm,
     robot::DriverstationComm,
     util::{
         buffer_reader::BufferReader,
         buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
-        super_small_vec::SuperSmallVec, robot_discovery::find_robot_ip,
+        robot_discovery::find_robot_ip,
+        super_small_vec::SuperSmallVec,
     },
 };
 use stick::Listener;
@@ -287,12 +325,12 @@ impl State {
     fn event(&mut self, id: usize, event: Event) -> Poll<Exit> {
         let player = id + 1;
         println!("p{}: {}", player, event);
-        
+
         match event {
             Event::Disconnect => {
                 self.controllers.swap_remove(id);
             }
-            
+
             Event::MenuR(true) => return Ready(player),
             Event::ActionA(pressed) => {
                 self.controllers[id].rumble(f32::from(u8::from(pressed)));
@@ -320,7 +358,6 @@ async fn event_loop() {
         controllers: Vec::new(),
         rumble: (0.0, 0.0),
     };
-
 
     let player_id = Loop::new(&mut state)
         .when(|s| &mut s.listener, State::connect)
@@ -358,13 +395,19 @@ fn main() {
     eframe::run_native(
         "Driver Station",
         options,
-        Box::new(|_cc| Box::new(MyApp { driverstation, girls: Girls::new().unwrap() })),
-    ).unwrap()
+        Box::new(|_cc| {
+            Box::new(MyApp {
+                driverstation,
+                girls: Girls::new().unwrap(),
+            })
+        }),
+    )
+    .unwrap()
 }
 
 struct MyApp {
     driverstation: Arc<RobotComm>,
-    girls : Girls,
+    girls: Girls,
 }
 
 impl eframe::App for MyApp {
@@ -373,7 +416,10 @@ impl eframe::App for MyApp {
             let status = self.driverstation.get_observed_status();
             if self.driverstation.is_connected() {
                 if status.has_robot_code() {
-                    ui.label(format!("Has Robot Code ip: {:?}", self.driverstation.get_robot_ip()));
+                    ui.label(format!(
+                        "Has Robot Code ip: {:?}",
+                        self.driverstation.get_robot_ip()
+                    ));
                 } else {
                     ui.label("No Robot Code");
                 }
@@ -395,40 +441,33 @@ impl eframe::App for MyApp {
                 ui.label("NO IDEA");
             }
 
-            if let Some(event) = self.girls.next_event(){
+            if let Some(event) = self.girls.next_event() {
                 match event.event {
                     // gilrs::EventType::ButtonPressed(_, _) => todo!(),
                     // gilrs::EventType::ButtonRepeated(_, _) => todo!(),
                     // gilrs::EventType::ButtonReleased(_, _) => todo!(),
                     // gilrs::EventType::ButtonChanged(_, _, _) => todo!(),
                     // gilrs::EventType::AxisChanged(_, _, _) => todo!(),
-                    gilrs::EventType::Connected => {
-
-                    },
-                    gilrs::EventType::Disconnected => {
-
-                    },
+                    gilrs::EventType::Connected => {}
+                    gilrs::EventType::Disconnected => {}
                     // gilrs::EventType::Dropped => todo!(),
-                    _ => {
-
-                    }
+                    _ => {}
                 }
             }
 
-            for (b, c) in self.girls.gamepads(){
-
+            for (b, c) in self.girls.gamepads() {
                 // println!("{b}, {c:#?}");
                 let mut joystick = Joystick::new();
                 // println!("{}", c.name());
-                if c.name() == "input-remapper gamepad"{
+                if c.name() == "input-remapper gamepad" {
                     continue;
                 }
-                for buttons in c.state().buttons(){
+                for buttons in c.state().buttons() {
                     // println!("{:?}", buttons);
                     // buttons.0
                     joystick.push_button(buttons.1.is_pressed());
                 }
-                for axis in c.state().axes(){
+                for axis in c.state().axes() {
                     // println!("actual: {} got: {}", axis.1.value(), (axis.1.value() * 128.0 - 0.5) as i8);
                     joystick.push_axis((axis.1.value() * 128.0 - 0.5) as i8);
                     // println!("{:?}", axis);

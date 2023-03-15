@@ -20,7 +20,6 @@ pub enum RobotPacketParseError {
     RobotToDriverInvalidUsageTag(u8),
     InvalidTimeZoneData,
     InvalidTimeData,
-    
 }
 
 impl Display for RobotPacketParseError {
@@ -43,7 +42,7 @@ impl From<BufferWritterError> for RobotPacketParseError {
     }
 }
 
-impl From<JoystickParseError> for RobotPacketParseError{
+impl From<JoystickParseError> for RobotPacketParseError {
     fn from(value: JoystickParseError) -> Self {
         Self::JoystickParseError(value)
     }

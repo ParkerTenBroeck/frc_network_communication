@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    buffer_reader::{BufferReader, BufferReaderError, ReadFromBuff},
+    buffer_reader::{BufferReader, BufferReaderError, ReadFromBuf},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
@@ -34,10 +34,10 @@ impl Display for RobotVoltage {
     }
 }
 
-impl<'a> ReadFromBuff<'a> for RobotVoltage {
+impl<'a> ReadFromBuf<'a> for RobotVoltage {
     type Error = BufferReaderError;
 
-    fn read_from_buff(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
         Ok(Self {
             int: buf.read_u8()?,
             dec: buf.read_u8()?,

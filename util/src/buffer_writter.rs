@@ -104,15 +104,15 @@ impl<'a, 'i, T: BufferWritter<'a>> BufferWritter<'a> for BufferWritterSizeGuard<
     }
 
     fn curr_buf_len(&self) -> usize {
-        self.curr_buf().len() 
+        self.curr_buf().len()
     }
 
     fn curr_buf(&self) -> &[u8] {
-        &self.inner.curr_buf()[self.recorded_size_start+self.recorded_size.bytes()..]
+        &self.inner.curr_buf()[self.recorded_size_start + self.recorded_size.bytes()..]
     }
 
     fn curr_buf_mut(&mut self) -> &mut [u8] {
-        &mut self.inner.curr_buf_mut()[self.recorded_size_start+self.recorded_size.bytes()..]
+        &mut self.inner.curr_buf_mut()[self.recorded_size_start + self.recorded_size.bytes()..]
     }
 
     fn write(&mut self, size: usize) -> Result<&mut [u8], BufferWritterError> {

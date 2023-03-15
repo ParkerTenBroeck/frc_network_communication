@@ -4,7 +4,7 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
-use util::buffer_reader::{BufferReader, ReadFromBuff};
+use util::buffer_reader::{BufferReader, ReadFromBuf};
 
 use crate::robot_to_driverstation::{Message, MessageReadError};
 
@@ -71,7 +71,7 @@ impl<T: MessageHandler> MessageConsole<T> {
                 conn.read_exact(&mut buff_exact[1..])?;
             }
 
-            match crate::robot_to_driverstation::Message::read_from_buff(&mut BufferReader::new(
+            match crate::robot_to_driverstation::Message::read_from_buf(&mut BufferReader::new(
                 buff_exact,
             )) {
                 Ok(packet) => self.reciever.receive_message(packet),

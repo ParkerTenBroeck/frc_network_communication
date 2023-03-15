@@ -19,7 +19,7 @@ impl RobotRequestCode {
         self.get(Self::NORMAL)
     }
 
-    pub fn is_invalid(&self) -> bool{
+    pub fn is_invalid(&self) -> bool {
         self.get(Self::_RESERVED_0) > 0 || self.get(Self::_RESERVED_1) > 0
     }
 

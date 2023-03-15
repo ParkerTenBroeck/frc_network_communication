@@ -1,6 +1,7 @@
 use std::{
     cell::UnsafeCell,
     sync::{atomic::AtomicU32, Arc, Mutex, MutexGuard},
+    time::{Duration, Instant},
 };
 
 use util::{buffer_writter::SliceBufferWritter, robot_voltage::RobotVoltage, socket::Socket};
@@ -53,11 +54,24 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 let mut socket = Socket::new_target_unknown(OUT_PORT, IN_PORT);
                 //socket.set_input_nonblocking(true);
                 let mut buf = [0u8; 4096];
+                // let mut sequence = 0u16;
 
+                // we should be getting packets ever 20 ms. if we wait any longer something will likely go wrong
+                // we wait a little longer because we actually dont do any timings here
+                // we simply reply (or try our best to) every time we get a packet
+                // socket.set_read_timout(Some(std::time::Duration::from_micros(500)));
+                socket.set_input_nonblocking(true);
+
+                // let mut last_sent = Instant::now();
+                // let mut last_received = Instant::now();
                 while Arc::strong_count(&self) > 1 {
+                    // let start = std::time::Instant::now();
+                    // let mut send_immeditly = false;
                     match socket.read::<DriverstationToRobotPacket>(&mut buf) {
                         Ok(Some(packet)) => {
                             use crate::common::request_code::*;
+                            // last_received = Instant::now();
+
                             let robot_send = RobotToDriverstationPacket {
                                 packet: packet.core_data.packet,
                                 tag_comm_version: 1,
@@ -70,6 +84,16 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                             socket
                                 .write(&robot_send, &mut SliceBufferWritter::new(&mut buf))
                                 .unwrap();
+
+                            // if sequence < packet.core_data.packet.wrapping_sub(1){
+                            //     println!("sequence Behind: {sequence}, {}",  packet.core_data.packet);
+                            // }else if sequence > packet.core_data.packet{
+                            //     println!("sequence Ahead {sequence}, {}",  packet.core_data.packet);
+                            //     continue;
+                            // }
+
+                            // send_immeditly = true;
+                            // sequence = packet.core_data.packet;
 
                             *self.last_core_data.spin_lock().unwrap() = packet.core_data;
 
@@ -88,8 +112,6 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                                 }
                             }
                             *self.last_joystick_data.spin_lock().unwrap() = packet.joystick_data;
-
-                            //println!("{:#?}", packet.core_data);
                         }
                         Ok(None) => {}
                         Err(error) => {
@@ -98,6 +120,19 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                             );
                         }
                     }
+                    // println!("{:?}", last_received.elapsed());
+                    // let timeout = last_sent.elapsed() >= Duration::from_millis(22)  && last_received.elapsed() < Duration::from_millis(40);
+                    // if send_immeditly || (timeout) {
+
+                    // sequence = sequence.wrapping_add(1);
+
+                    // last_sent = Instant::now();
+                    // }
+
+                    // if timeout{
+                    // println!("Packet Took too long")
+                    // }
+                    std::thread::sleep(Duration::from_millis(1));
                 }
             });
             if let Err(err) = res {
@@ -164,8 +199,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 .get()
                 .as_mut()
                 .unwrap_unchecked()
-                .set(ControlCode::TEST, true)
-                .set(ControlCode::AUTONOMUS, false);
+                .set_test();
         }
     }
 
@@ -175,8 +209,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 .get()
                 .as_mut()
                 .unwrap_unchecked()
-                .set(ControlCode::TEST, false)
-                .set(ControlCode::AUTONOMUS, true);
+                .set_autonomus();
         }
     }
 
@@ -186,8 +219,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 .get()
                 .as_mut()
                 .unwrap_unchecked()
-                .set(ControlCode::TEST, false)
-                .set(ControlCode::AUTONOMUS, false);
+                .set_teleop();
         }
     }
 
@@ -212,10 +244,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
     }
 
     pub fn get_joystick(self: &Arc<Self>, index: usize) -> Option<Joystick> {
-        self.last_joystick_data
-            .lock()
-            .unwrap()
-            .get(index).copied()
+        self.last_joystick_data.lock().unwrap().get(index).copied()
     }
 }
 

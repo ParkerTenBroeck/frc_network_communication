@@ -1,6 +1,7 @@
 use std::{
     net::{IpAddr, SocketAddr},
     sync::{atomic::AtomicBool, Arc, Condvar, Mutex},
+    time::Instant,
 };
 
 use util::{
@@ -72,8 +73,8 @@ impl RobotComm {
 
         if let Some(ip) = *guard {
             let socket = Socket::new_target_knonw(1150, SocketAddr::new(ip, 1110));
-            socket.set_read_timout(Some(std::time::Duration::from_millis(200)));
-            socket.set_write_timout(Some(std::time::Duration::from_millis(200)));
+            socket.set_read_timout(Some(std::time::Duration::from_millis(100)));
+            socket.set_write_timout(Some(std::time::Duration::from_millis(20)));
             Some(socket)
         } else {
             None
@@ -128,6 +129,7 @@ impl RobotComm {
 
             // write our packet to the buffer
             let mut writter = SliceBufferWritter::new(&mut buf);
+            let packet_sent_sqeu = cb1_lock.core_data.packet;
             let res = cb1_lock.write_to_buf(&mut writter);
 
             // copy our sent core data out
@@ -144,6 +146,7 @@ impl RobotComm {
             let sent = match res {
                 Ok(_) => {
                     let buf_to_write = writter.curr_buf();
+
                     if let Err(err) = socket.write_raw(buf_to_write) {
                         self.reconnect();
                         eprint!("error: {err:#?}");
@@ -163,7 +166,11 @@ impl RobotComm {
                 while packet_behind {
                     packet_behind = false;
                     let now = std::time::Instant::now();
+
+                    let start = Instant::now();
                     let res = socket.read::<RobotToDriverstationPacket>(&mut buf);
+                    let time = start.elapsed();
+
                     if let Ok(Some(packet)) = res {
                         request_time = packet.request.request_time();
 
@@ -173,19 +180,23 @@ impl RobotComm {
                         other_lock.observed_voltage = packet.battery;
                         other_lock.observed_state = packet.status;
 
-                        if packet.packet < _core_copy.packet
-                            && packet.packet.abs_diff(_core_copy.packet) < 100
-                        {
+                        if packet.packet < packet_sent_sqeu && packet.packet != 0 {
+                            println!(
+                                "\u{001B}[31m{}\u{001b}[0m{}",
+                                packet.packet, packet_sent_sqeu
+                            );
                             packet_behind = true;
+                        }
 
-                            println!("\u{001B}[31m{}\u{001b}[0m", packet.packet);
+                        if time > std::time::Duration::from_millis(20) {
+                            println!("\u{001B}[31mPacket late: {:?}\u{001b}[0m", time);
                         }
 
                         self.connected
                             .store(true, std::sync::atomic::Ordering::Relaxed);
                     } else if let Ok(None) = res {
                         // packet dropped
-                        println!("Packet dropped");
+                        println!("\u{001B}[31mPacket dropped: {:?}\u{001b}[0m", time);
                         self.connected
                             .store(false, std::sync::atomic::Ordering::Relaxed);
                     } else if let Err(err) = res {
@@ -207,11 +218,6 @@ impl RobotComm {
                     if worst < now.elapsed() {
                         worst = now.elapsed();
                     }
-                    // println!(
-                    //     "worst: {:.2}ms curr: {:.2}ms",
-                    //     worst.as_secs_f32() * 1000.0,
-                    //     now.elapsed().as_secs_f32() * 1000.0
-                    // );
                 }
             }
 
@@ -243,7 +249,7 @@ impl RobotComm {
         self.robot_ip_condvar.notify_all();
     }
 
-    pub fn get_robot_ip(&self) -> Option<IpAddr>{
+    pub fn get_robot_ip(&self) -> Option<IpAddr> {
         *self.robot_ip.lock().unwrap()
     }
 

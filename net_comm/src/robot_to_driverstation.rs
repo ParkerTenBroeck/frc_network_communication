@@ -3,25 +3,42 @@ pub mod error;
 use std::borrow::Cow;
 
 use util::{
-    buffer_reader::{BufferReaderError, ReadFromBuff},
+    buffer_reader::{BufferReaderError, ReadFromBuf},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
+    team_number::TeamNumber,
 };
 
 use self::error::{Errors, Warnings};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ReportKind<'a> {
+pub enum VersionInfo<'a> {
     LibCVersion(Cow<'a, str>),
     ImageVersion(Cow<'a, str>),
-    Empty(Cow<'a, str>),
+    CANTalon(u8),
+    PDP(u8),
+    PCM(u8),
+    Empty,
 }
 
-impl<'a> ReportKind<'a> {
+impl<'a> VersionInfo<'a> {
     pub fn get_tag(&self) -> &'static str {
         match self {
-            ReportKind::LibCVersion(_) => "FRC_Lib_Version",
-            ReportKind::ImageVersion(_) => "roboRIO Image",
-            ReportKind::Empty(_) => "",
+            VersionInfo::LibCVersion(_) => "FRC_Lib_Version",
+            VersionInfo::ImageVersion(_) => "roboRIO Image",
+            VersionInfo::Empty
+            | VersionInfo::CANTalon(_)
+            | VersionInfo::PDP(_)
+            | VersionInfo::PCM(_) => "",
+        }
+    }
+
+    fn device_id(&self) -> u8 {
+        match self {
+            VersionInfo::LibCVersion(_) | VersionInfo::ImageVersion(_) => 0,
+            VersionInfo::CANTalon(_) => 2,
+            VersionInfo::PDP(_) => 8,
+            VersionInfo::PCM(_) => 9,
+            VersionInfo::Empty => 0,
         }
     }
 }
@@ -31,8 +48,8 @@ pub enum MessageKind<'a> {
     ZeroCode {
         msg: Cow<'a, str>,
     },
-    Report {
-        kind: ReportKind<'a>,
+    VersionInfo {
+        kind: VersionInfo<'a>,
     },
     Message {
         ms: u32,
@@ -64,10 +81,19 @@ pub enum MessageKind<'a> {
         /// when this is 2 the third top row on the power/can metrics has a red underline
         third_top_signal: u8,
     },
-    ShortInfo {
+    DisableFaults {
+        comms: u16,
+        fault_12v: u16,
+    },
+    RailFaults {
         short_6v: u16,
         short_5v: u16,
         short_3_3v: u16,
+    },
+    UsageReport {
+        team: TeamNumber,
+        unknwon: u8,
+        usage: (),
     },
 }
 
@@ -75,11 +101,13 @@ impl<'a> MessageKind<'a> {
     fn get_code(&self) -> u8 {
         match self {
             MessageKind::ZeroCode { .. } => 0x00,
-            MessageKind::Report { .. } => 0x0A,
+            MessageKind::UsageReport { .. } => 0x01,
+            MessageKind::DisableFaults { .. } => 0x04,
+            MessageKind::RailFaults { .. } => 0x05,
+            MessageKind::VersionInfo { .. } => 0x0A,
             MessageKind::Error { .. } | MessageKind::Warning { .. } => 0x0B,
             MessageKind::Message { .. } => 0x0C,
             MessageKind::UnderlineAnd5VDisable { .. } => 0x0D,
-            MessageKind::ShortInfo { .. } => 0x05,
         }
     }
 }
@@ -174,6 +202,7 @@ pub enum MessageReadError {
     InvalidReportTag(String),
     ReportStartValueNonZero,
     InvalidMsgCode(u8),
+    InvalidVersionDeviceTag(u8),
 }
 
 impl From<BufferReaderError> for MessageReadError {
@@ -182,12 +211,10 @@ impl From<BufferReaderError> for MessageReadError {
     }
 }
 
-impl<'a> ReadFromBuff<'a> for Message<'a> {
+impl<'a> ReadFromBuf<'a> for Message<'a> {
     type Error = MessageReadError;
 
-    fn read_from_buff(
-        buf: &mut util::buffer_reader::BufferReader<'a>,
-    ) -> Result<Self, Self::Error> {
+    fn read_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
         // tells us how to treat the rest of the data
         let msg_code = buf.read_u8()?;
 
@@ -199,22 +226,50 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
             },
 
             0x0A => Self {
-                kind: MessageKind::Report {
+                kind: MessageKind::VersionInfo {
                     kind: {
-                        let _zero = buf.read_u32()?;
-                        if _zero != 0 {
-                            Err(MessageReadError::ReportStartValueNonZero)?
-                        }
-                        let tag = buf.read_short_str()?;
-                        match tag {
-                            "roboRIO Image" => {
-                                ReportKind::ImageVersion(Cow::Borrowed(buf.read_short_str()?))
+                        let device_id = buf.read_u8()?;
+
+                        match device_id {
+                            0x00 => {
+                                buf.assert_n_zero(3)?;
+                                let tag = buf.read_short_str()?;
+                                match tag {
+                                    "roboRIO Image" => VersionInfo::ImageVersion(Cow::Borrowed(
+                                        buf.read_short_str()?,
+                                    )),
+                                    "FRC_Lib_Version" => VersionInfo::LibCVersion(Cow::Borrowed(
+                                        buf.read_short_str()?,
+                                    )),
+                                    "" => VersionInfo::Empty,
+                                    _ => Err(MessageReadError::InvalidReportTag(tag.to_owned()))?,
+                                }
                             }
-                            "FRC_Lib_Version" => {
-                                ReportKind::LibCVersion(Cow::Borrowed(buf.read_short_str()?))
+                            2 => {
+                                buf.assert_n_zero(2)?;
+                                //maybe the can id ??
+                                let can_id = buf.read_u8()?;
+                                buf.assert_n_zero(2)?;
+                                buf.assert_empty()?;
+                                VersionInfo::CANTalon(can_id)
                             }
-                            "" => ReportKind::Empty(Cow::Borrowed(buf.read_short_str()?)),
-                            _ => Err(MessageReadError::InvalidReportTag(tag.to_owned()))?,
+                            8 => {
+                                buf.assert_n_zero(2)?;
+                                //maybe the can id ??
+                                let can_id = buf.read_u8()?;
+                                buf.assert_n_zero(2)?;
+                                buf.assert_empty()?;
+                                VersionInfo::PDP(can_id)
+                            }
+                            9 => {
+                                buf.assert_n_zero(2)?;
+                                //maybe the can id ??
+                                let can_id = buf.read_u8()?;
+                                buf.assert_n_zero(2)?;
+                                buf.assert_empty()?;
+                                VersionInfo::PCM(can_id)
+                            }
+                            _ => Err(MessageReadError::InvalidVersionDeviceTag(device_id))?,
                         }
                     },
                 },
@@ -281,19 +336,17 @@ impl<'a> ReadFromBuff<'a> for Message<'a> {
                     third_top_signal: buf.read_u8()?,
                 },
             },
-            0x05 => {
-                Self{
-                    kind: MessageKind::ShortInfo { 
-                        short_6v: buf.read_u16()?, 
-                        short_5v: buf.read_u16()?, 
-                        short_3_3v: buf.read_u16()? 
-                    }
-                }
-            }
+            0x05 => Self {
+                kind: MessageKind::RailFaults {
+                    short_6v: buf.read_u16()?,
+                    short_5v: buf.read_u16()?,
+                    short_3_3v: buf.read_u16()?,
+                },
+            },
             _ => {
                 println!("{:?}", buf.read_amount(buf.remaining_buf_len())?);
                 Err(MessageReadError::InvalidMsgCode(msg_code))?
-            },
+            }
         });
         buf.assert_empty()?;
         ok
@@ -355,16 +408,30 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                 buf.write_u16(stack.len() as u16)?;
                 buf.write_buf(stack.as_bytes())?;
             }
-            MessageKind::Report { kind } => {
-                buf.write_u32(0)?;
+            MessageKind::VersionInfo { kind } => {
+                // buf.write_u32(0)?;
+                buf.write_u8(kind.device_id())?;
 
-                buf.write_short_str(kind.get_tag())?;
-                let msg = match kind {
-                    ReportKind::LibCVersion(val) => &**val,
-                    ReportKind::ImageVersion(val) => &**val,
-                    ReportKind::Empty(val) => &**val,
-                };
-                buf.write_short_str(msg)?;
+                match kind {
+                    VersionInfo::LibCVersion(msg) | VersionInfo::ImageVersion(msg) => {
+                        buf.write_u16(0)?;
+                        buf.write_u8(0)?;
+                        buf.write_short_str(kind.get_tag())?;
+                        buf.write_short_str(msg)?;
+                    }
+                    VersionInfo::CANTalon(can_id)
+                    | VersionInfo::PDP(can_id)
+                    | VersionInfo::PCM(can_id) => {
+                        buf.write_u16(0)?;
+                        buf.write_u8(*can_id)?;
+                        //tags and strings
+                        buf.write_u16(0)?;
+                    }
+                    VersionInfo::Empty => {
+                        // this shidz emptyyy
+                        buf.write(5)?.fill(0);
+                    }
+                }
             }
             MessageKind::UnderlineAnd5VDisable {
                 disable_5v,
@@ -377,12 +444,27 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                 buf.write_u8(*second_top_signal)?;
                 buf.write_u8(*third_top_signal)?;
             }
-            MessageKind::ShortInfo { short_6v, short_5v, short_3_3v } => {
+            MessageKind::RailFaults {
+                short_6v,
+                short_5v,
+                short_3_3v,
+            } => {
                 // buf.write_buf(&*data)?;
                 buf.write_u16(*short_6v)?;
                 buf.write_u16(*short_5v)?;
                 buf.write_u16(*short_3_3v)?;
-            },
+            }
+            MessageKind::DisableFaults { comms, fault_12v } => {
+                buf.write_u16(*comms)?;
+                buf.write_u16(*fault_12v)?;
+            }
+            MessageKind::UsageReport {
+                team,
+                unknwon,
+                usage,
+            } => {
+                todo!("NOT ACTUALLY WORKING YET :3");
+            }
         }
         Ok(())
     }

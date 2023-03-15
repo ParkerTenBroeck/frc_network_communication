@@ -1,8 +1,7 @@
 mycelium_bitfield::bitfield! {
     #[derive(Default, PartialEq, Eq, Hash)]
     pub struct ControlCode<u8> {
-        pub const TEST: bool;
-        pub const AUTONOMUS: bool;
+        pub const MODE = 2;
         pub const ENABLED: bool;
         pub const FMS_ATTACHED: bool;
         pub const BROWN_OUT_PROTECTION: bool;
@@ -17,16 +16,16 @@ impl ControlCode {
         self.0
     }
 
-    pub fn is_invalid(&self) -> bool{
+    pub fn is_invalid(&self) -> bool {
         self.get(Self::_RESERVED) > 0
     }
 
     pub fn is_test(&self) -> bool {
-        self.get(Self::TEST)
+        self.get(Self::MODE) == 1
     }
 
     pub fn is_autonomus(&self) -> bool {
-        self.get(Self::AUTONOMUS)
+        self.get(Self::MODE) == 2
     }
 
     pub fn is_practise(&self) -> bool {
@@ -35,7 +34,7 @@ impl ControlCode {
     }
 
     pub fn is_teleop(&self) -> bool {
-        !(self.is_test() | self.is_autonomus())
+        self.get(Self::MODE) == 3
     }
 
     pub fn is_estop(&self) -> bool {
@@ -59,20 +58,17 @@ impl ControlCode {
     }
 
     pub fn set_test(&mut self) -> &mut Self {
-        self.set(Self::TEST, true);
-        self.set(Self::AUTONOMUS, false);
+        self.set(Self::MODE, 1);
         self
     }
 
     pub fn set_autonomus(&mut self) -> &mut Self {
-        self.set(Self::TEST, false);
-        self.set(Self::AUTONOMUS, true);
+        self.set(Self::MODE, 2);
         self
     }
 
     pub fn set_teleop(&mut self) -> &mut Self {
-        self.set(Self::TEST, false);
-        self.set(Self::AUTONOMUS, false);
+        self.set(Self::MODE, 0);
         self
     }
 

@@ -1,6 +1,6 @@
-pub trait ReadFromBuff<'a>: Sized {
+pub trait ReadFromBuf<'a>: Sized {
     type Error;
-    fn read_from_buff(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error>;
+    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error>;
 }
 
 #[derive(Debug)]
@@ -11,9 +11,10 @@ pub enum BufferReaderError {
     },
     ParseUft8Error(std::str::Utf8Error),
     GeneralError(Box<dyn std::error::Error + 'static + Send>),
-    BufferEmptyAssertionFailed{
-        remaining: usize
+    BufferEmptyAssertionFailed {
+        remaining: usize,
     },
+    BufferZeroAssertionFailed,
 }
 
 impl From<std::str::Utf8Error> for BufferReaderError {
@@ -30,10 +31,10 @@ impl std::fmt::Display for BufferReaderError {
     }
 }
 
-impl<'a> ReadFromBuff<'a> for &'a [u8] {
+impl<'a> ReadFromBuf<'a> for &'a [u8] {
     type Error = BufferReaderError;
 
-    fn read_from_buff(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
         Ok(buf.raw_buff())
     }
 }
@@ -96,7 +97,7 @@ impl<'a> BufferReader<'a> {
 
     pub fn read_u64(&mut self) -> Result<u64, BufferReaderError> {
         let buf = self.read_amount(8)?;
-        Ok(   ((buf[0] as u64) << 56)
+        Ok(((buf[0] as u64) << 56)
             | ((buf[1] as u64) << 48)
             | ((buf[2] as u64) << 40)
             | ((buf[3] as u64) << 32)
@@ -112,7 +113,7 @@ impl<'a> BufferReader<'a> {
     }
 
     #[must_use = "Sized Reader is never used"]
-    pub fn sized_u8_reader(&mut self) -> Result<Self,BufferReaderError>{
+    pub fn sized_u8_reader(&mut self) -> Result<Self, BufferReaderError> {
         let size = self.read_u8()?;
         Ok(BufferReader::new(self.read_amount(size as usize)?))
     }
@@ -133,6 +134,16 @@ impl<'a> BufferReader<'a> {
     /// or if the buffer is empty or not long enough for the length read
     pub fn read_short_str(&mut self) -> Result<&'a str, BufferReaderError> {
         Ok(std::str::from_utf8(self.read_short_u8_arr()?)?)
+    }
+
+    pub fn assert_n_zero(&mut self, len: usize) -> Result<(), BufferReaderError> {
+        let read = self.read_amount(len)?;
+        for b in read {
+            if *b != 0 {
+                Err(BufferReaderError::BufferZeroAssertionFailed)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn read_str(&mut self, length: usize) -> Result<&'a str, BufferReaderError> {
@@ -160,6 +171,10 @@ impl<'a> BufferReader<'a> {
         }
     }
 
+    pub fn read_remaining(&mut self) -> Result<&[u8], BufferReaderError> {
+        self.read_amount(self.remaining_buf_len())
+    }
+
     pub fn read_const_amount<const AMOUNT: usize>(
         &mut self,
     ) -> Result<&'a [u8; AMOUNT], BufferReaderError> {
@@ -171,11 +186,11 @@ impl<'a> BufferReader<'a> {
     }
 
     pub fn assert_empty(&self) -> Result<(), BufferReaderError> {
-        if self.has_more(){
-            Err(BufferReaderError::BufferEmptyAssertionFailed{
-                remaining: self.remaining_buf_len()
+        if self.has_more() {
+            Err(BufferReaderError::BufferEmptyAssertionFailed {
+                remaining: self.remaining_buf_len(),
             })
-        }else{
+        } else {
             Ok(())
         }
     }

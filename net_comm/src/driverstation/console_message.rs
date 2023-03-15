@@ -41,19 +41,35 @@ impl MessageHandler for SystemConsoleOutput {
             MessageKind::ZeroCode { msg } => {
                 println!("ZeroCode: {}", msg)
             }
-            MessageKind::Report { kind } => {
+            MessageKind::VersionInfo { kind } => {
                 println!("Report: {kind:?}")
             }
-            MessageKind::UnderlineAnd5VDisable { .. } => {
-
-            },
-            MessageKind::ShortInfo { short_6v, short_5v, short_3_3v } => {
+            MessageKind::UnderlineAnd5VDisable { .. } => {}
+            MessageKind::RailFaults {
+                short_6v,
+                short_5v,
+                short_3_3v,
+            } => {
                 println!("Shorts: 6v: {short_6v}, 5v: {short_5v}, 3.3v: {short_3_3v}")
-            },
+            }
+            MessageKind::DisableFaults { comms, fault_12v } => {}
+            MessageKind::UsageReport {
+                team,
+                unknwon,
+                usage,
+            } => {}
         }
     }
 
     fn parse_error(&mut self, err: MessageReadError) {
         eprintln!("{err:#?}")
     }
+}
+
+pub struct Ignore {}
+
+impl MessageHandler for Ignore {
+    fn receive_message(&mut self, message: Message<'_>) {}
+
+    fn parse_error(&mut self, err: MessageReadError) {}
 }

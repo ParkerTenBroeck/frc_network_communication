@@ -12,6 +12,27 @@ pub enum AllianceStation {
     Blue3 = 5,
 }
 
+impl AllianceStation {
+    pub fn is_red(&self) -> bool {
+        match self {
+            Self::Red1 | Self::Red2 | Self::Red3 => true,
+            Self::Blue1 | Self::Blue2 | Self::Blue3 => true,
+        }
+    }
+
+    pub fn is_blue(&self) -> bool {
+        !self.is_red()
+    }
+
+    pub fn station(&self) -> u8 {
+        match self {
+            Self::Red1 | Self::Blue1 => 1,
+            Self::Red2 | Self::Blue2 => 2,
+            Self::Red3 | Self::Blue3 => 3,
+        }
+    }
+}
+
 impl TryFrom<u8> for AllianceStation {
     type Error = RobotPacketParseError;
 

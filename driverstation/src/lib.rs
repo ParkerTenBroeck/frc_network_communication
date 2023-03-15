@@ -43,7 +43,7 @@
 
 pub type Girls = Gilrs;
 
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use gilrs::Gilrs;
 use robot_comm::{
@@ -54,100 +54,119 @@ use robot_comm::{
 };
 use util::robot_discovery::RobotDiscovery;
 
-#[derive(Clone)]
 pub struct Driverstation {
-    robot: Arc<RobotComm>,
-    console: (),
-    fms: (),
+    robot_udp: Mutex<RobotCommUdp>,
+    robot_tcp: Mutex<RobotCommTcp>,
+    fms_udp: Mutex<FmsUdp>,
+    fms_tcp: Mutex<FmsTcp>,
 }
 
-impl Driverstation {
-    pub fn new(robot: impl Into<RobotDiscovery>) -> Self {
-        let new = Self {
-            robot: RobotComm::new(None),
-            console: (),
-            fms: (),
-        };
-        new.robot.start_new_thread();
+struct RobotCommUdp {}
 
-        new.connect_to(robot);
-        new
-    }
+struct RobotCommTcp {}
 
-    pub fn connect_to(&self, robot: impl Into<RobotDiscovery>) {
-        let discovery = robot.into();
-        let c = self.clone();
-        std::thread::spawn(move || {
-            //let ip = DiscoveryMethod::connect(discovery);
-            c.robot.connect_to(todo!());
+struct FmsUdp {}
+
+struct FmsTcp {}
+
+pub fn get_driverstation() -> &'static Driverstation {
+    static DAEMON_STARTED: AtomicBool = AtomicBool::new(false);
+    static DRIVERSTATION: Driverstation = Driverstation::new();
+
+    if !DAEMON_STARTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        _ = std::thread::spawn(|| {
+            DRIVERSTATION.run_blocking();
         });
     }
 
+    &DRIVERSTATION
+}
+
+impl Driverstation {
+    pub const fn new() -> Self {
+        Self {
+            robot_udp: Mutex::new(RobotCommUdp {}),
+            robot_tcp: Mutex::new(RobotCommTcp {}),
+            fms_udp: Mutex::new(FmsUdp {}),
+            fms_tcp: Mutex::new(FmsTcp {}),
+        }
+    }
+
+    pub fn run_blocking(&self) -> ! {
+        loop {
+            self.run_blocking_inner()
+        }
+    }
+
+    pub fn run_blocking_inner(&self) {
+        todo!()
+    }
+
+    pub fn connect_to(&self, robot: impl Into<RobotDiscovery>) {
+        todo!()
+    }
+
     pub fn disconnect(&self) {
-        self.robot.connect_to(None);
+        todo!()
     }
 
     pub fn reconnect(&self) {
-        self.robot.reconnect()
+        todo!()
     }
 
     pub fn stop_comm(&self) {
-        self.robot.kill_comm();
-    }
-
-    pub fn start_comm(&self) {
-        self.robot.start_new_thread();
+        todo!()
     }
 
     pub fn is_robot_connected(&self) -> bool {
-        self.robot.is_connected()
+        todo!()
     }
 
     pub fn get_observed_control(&self) -> robot_comm::common::control_code::ControlCode {
-        self.robot.get_observed_control()
+        todo!()
     }
 
     pub fn get_observed_status(&self) -> robot_comm::common::roborio_status_code::RobotStatusCode {
-        self.robot.get_observed_status()
+        todo!()
     }
 
     pub fn get_observed_voltage(&self) -> net_comm::robot_voltage::RobotVoltage {
-        self.robot.get_observed_voltage()
+        todo!()
     }
 
     pub fn set_alliance_station(&self, alliance_station: AllianceStation) {
-        self.set_alliance_station(alliance_station)
+        todo!()
     }
 
     pub fn set_autonomus(&self) {
-        self.robot.set_autonomus()
+        todo!()
     }
 
     pub fn set_brownout_protection(&self, brownout_protection: bool) {
-        self.robot.set_brownout_protection(brownout_protection)
+        todo!()
     }
 
     pub fn set_disabled(&self) {
-        self.robot.set_disabled()
+        todo!()
     }
 
     pub fn set_estop(&self, estop: bool) {
-        self.robot.set_estop(estop)
+        todo!()
     }
 
     pub fn set_request_code(&self, request_code: RobotRequestCode) {
-        self.robot.set_request_code(request_code)
+        todo!()
     }
 
     pub fn set_teleop(&self) {
-        self.robot.set_teleop()
+        todo!()
     }
 
     pub fn set_test(&self) {
-        self.robot.set_test()
+        todo!()
     }
 
     pub fn update_joystick(&self, index: usize, joystick: Joystick) {
-        self.robot.update_joystick(index, joystick)
+        todo!()
     }
 }
