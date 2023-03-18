@@ -20,21 +20,16 @@ impl ControlCode {
         self.get(Self::_RESERVED) > 0
     }
 
+    pub fn is_teleop(&self) -> bool {
+        self.get(Self::MODE) == 0
+    }
+
     pub fn is_test(&self) -> bool {
         self.get(Self::MODE) == 1
     }
 
     pub fn is_autonomus(&self) -> bool {
         self.get(Self::MODE) == 2
-    }
-
-    pub fn is_practise(&self) -> bool {
-        // self.get(Self::P)
-        todo!()
-    }
-
-    pub fn is_teleop(&self) -> bool {
-        self.get(Self::MODE) == 3
     }
 
     pub fn is_estop(&self) -> bool {

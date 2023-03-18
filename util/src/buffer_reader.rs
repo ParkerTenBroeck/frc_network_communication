@@ -1,7 +1,15 @@
-pub trait ReadFromBuf<'a>: Sized {
-    type Error;
-    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error>;
+pub trait CreateFromBuf<'a>: Sized + ReadFromBuf<'a> {
+    // type Error;
+    fn create_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error>;
+
+    // fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error>;
 }
+
+pub trait ReadFromBuf<'a>{
+    type Error;
+    fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error>;
+}
+
 
 #[derive(Debug)]
 pub enum BufferReaderError {
@@ -31,11 +39,23 @@ impl std::fmt::Display for BufferReaderError {
     }
 }
 
-impl<'a> ReadFromBuf<'a> for &'a [u8] {
-    type Error = BufferReaderError;
+impl<'a> CreateFromBuf<'a> for &'a [u8] {
 
-    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
-        Ok(buf.raw_buff())
+    fn create_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
+        Ok(buf.raw_buff())    
+    }
+
+    // fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error> {
+        
+    //     Ok(())
+    // }
+}
+
+impl<'a> ReadFromBuf<'a> for &'a [u8]{
+    type Error = BufferReaderError;
+    fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error> {
+        *self = buf.raw_buff(); 
+        Ok(())
     }
 }
 
@@ -73,6 +93,12 @@ impl<'a> BufferReader<'a> {
 
     pub fn read_known_length_u16(&mut self) -> Result<Self, BufferReaderError> {
         let size = self.read_u16()? as usize;
+        let buf = self.read_amount(size)?;
+        Ok(Self::new(buf))
+    }
+
+    pub fn read_known_length_u8(&mut self) -> Result<Self, BufferReaderError> {
+        let size = self.read_u8()? as usize;
         let buf = self.read_amount(size)?;
         Ok(Self::new(buf))
     }
@@ -193,5 +219,9 @@ impl<'a> BufferReader<'a> {
         } else {
             Ok(())
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.remaining_buf_len() == 0
     }
 }

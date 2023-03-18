@@ -284,8 +284,8 @@ use net_comm::{
     robot_voltage::RobotVoltage,
 };
 use robot_comm::{
-    common::{joystick::Joystick, request_code::RobotRequestCode},
-    driverstation::RobotComm,
+    common::{joystick::{Joystick, self, NonNegU16}, request_code::RobotRequestCode},
+    driverstation::{RobotComm, self},
     robot::DriverstationComm,
     util::{
         buffer_reader::BufferReader,
@@ -304,59 +304,140 @@ use stick::{Controller, Event};
 
 type Exit = usize;
 
+#[derive(Default)]
+struct Pov{
+    val: u8,
+}
+impl Pov{
+    pub fn to_val(&self) -> NonNegU16{
+        match self.val{
+            0b0001 => NonNegU16::new(0),
+            0b0011 => NonNegU16::new(45),
+            0b0010 => NonNegU16::new(90),
+            0b0110 => NonNegU16::new(90 + 45),
+            0b0100 => NonNegU16::new(180),
+            0b1100 => NonNegU16::new(180 + 45),
+            0b1000 => NonNegU16::new(180 + 90),
+            0b1001 => NonNegU16::new(180 + 90 + 45),
+            _ => NonNegU16::none()
+        }
+    }
+
+    pub fn set_up(&mut self, pressed: bool){
+        self.val = self.val & 1 | pressed as u8;
+    }
+    pub fn set_right(&mut self, pressed: bool){
+        self.val = self.val & 0b10 | ((pressed as u8) << 1);
+    }
+    pub fn set_down(&mut self, pressed: bool){
+        self.val = self.val & 0b100 | ((pressed as u8) << 2);
+    }
+    pub fn set_left(&mut self, pressed: bool){
+        self.val = self.val & 0b1000 | ((pressed as u8) << 3);
+    }
+}
+
 struct State {
     listener: Listener,
     controllers: Vec<Controller>,
+    povs: Vec<Pov>,
     rumble: (f32, f32),
+    comm: Arc<RobotComm>
 }
 
 impl State {
     fn connect(&mut self, controller: Controller) -> Poll<Exit> {
-        println!(
-            "Connected p{}, id: {:016X}, name: {}",
-            self.controllers.len() + 1,
-            controller.id(),
-            controller.name(),
-        );
-        self.controllers.push(controller);
+
+        if controller.name() != "input-remapper gamepad"{
+            println!(
+                "Connected p{}, id: {:016X}, name: {}",
+                self.controllers.len() + 1,
+                controller.id(),
+                controller.name(),
+            );
+            let mut joy = Joystick::default();
+            joy.set_button(9, false).unwrap();
+            joy.set_pov(0, NonNegU16::none()).unwrap();
+            joy.set_axis(5, 0).unwrap();
+            self.comm.update_joystick(self.controllers.len(), joy);
+            self.controllers.push(controller);
+            self.povs.push(Default::default());
+        }
         Pending
     }
 
     fn event(&mut self, id: usize, event: Event) -> Poll<Exit> {
+
         let player = id + 1;
         println!("p{}: {}", player, event);
-
-        match event {
-            Event::Disconnect => {
+        
+        
+        self.comm.modify_joystick(id, |joy|{
+            if let Event::Disconnect = event {
                 self.controllers.swap_remove(id);
-            }
+                *joy = None;
+            }else if let Some(joy) = joy{
+                match event{
+                    Event::ActionA(bool) => joy.set_button(0, bool).unwrap(),
+                    Event::ActionB(bool) => joy.set_button(1, bool).unwrap(),
+                    Event::ActionV(bool) => joy.set_button(2, bool).unwrap(),
+                    Event::ActionH(bool) => joy.set_button(3, bool).unwrap(),
 
-            Event::MenuR(true) => return Ready(player),
-            Event::ActionA(pressed) => {
-                self.controllers[id].rumble(f32::from(u8::from(pressed)));
+                    Event::MenuL(bool) => joy.set_button(4, bool).unwrap(),
+                    Event::MenuR(bool) => joy.set_button(5, bool).unwrap(),
+
+                    Event::BumperL(bool) => joy.set_button(6, bool).unwrap(),
+                    Event::BumperR(bool) => joy.set_button(7, bool).unwrap(),
+                    Event::Joy(bool) => joy.set_button(8, bool).unwrap(),
+                    Event::Cam(bool) => joy.set_button(9, bool).unwrap(),
+
+
+                    Event::ActionC(bool) => joy.set_button(2, bool).unwrap(),
+                    Event::ActionD(bool) => joy.set_button(3, bool).unwrap(),
+                    Event::ActionL(bool) => joy.set_button(0, bool).unwrap(),
+                    Event::ActionM(bool) => joy.set_button(0, bool).unwrap(),
+                    Event::ActionR(bool) => joy.set_button(0, bool).unwrap(),
+
+
+                    Event::JoyX(val) => joy.set_axis(0, (val * 255.0) as i8).unwrap(),
+                    Event::JoyY(val) => joy.set_axis(1, (val * 255.0) as i8).unwrap(),
+                    Event::JoyZ(val) => joy.set_axis(2, (val * 255.0 * 255.0) as i8).unwrap(),
+                    Event::CamZ(val) => joy.set_axis(3, (val * 255.0 * 255.0) as i8).unwrap(),
+                    Event::CamX(val) => joy.set_axis(4, (val * 255.0) as i8).unwrap(),
+                    Event::CamY(val) => joy.set_axis(5, (val * 255.0) as i8).unwrap(),
+
+                    Event::PovUp(pressed) => {
+                        self.povs[id].set_up(pressed);
+                        joy.set_pov(0, self.povs[id].to_val()).unwrap();
+                    }
+                    Event::PovRight(pressed) => {
+                        self.povs[id].set_right(pressed);
+                        joy.set_pov(0, self.povs[id].to_val()).unwrap();
+                    }
+                    Event::PovDown(pressed) => {
+                        self.povs[id].set_down(pressed);
+                        joy.set_pov(0, self.povs[id].to_val()).unwrap();
+                    }
+                    Event::PovLeft(pressed) => {
+                        self.povs[id].set_left(pressed);
+                        joy.set_pov(0, self.povs[id].to_val()).unwrap();
+                    }
+                    _ => {}
+                }
+                println!("{joy:#?}")
             }
-            Event::ActionB(pressed) => {
-                self.controllers[id].rumble(0.5 * f32::from(u8::from(pressed)));
-            }
-            Event::BumperL(pressed) => {
-                self.rumble.0 = f32::from(u8::from(pressed));
-                self.controllers[id].rumble(self.rumble);
-            }
-            Event::BumperR(pressed) => {
-                self.rumble.1 = f32::from(u8::from(pressed));
-                self.controllers[id].rumble(self.rumble);
-            }
-            _ => {}
-        }
+        });
         Pending
     }
 }
 
-async fn event_loop() {
+async fn event_loop(comm: Arc<RobotComm>) {
     let mut state = State {
         listener: Listener::default(),
+        povs: Vec::new(),
         controllers: Vec::new(),
         rumble: (0.0, 0.0),
+        comm,
     };
 
     let player_id = Loop::new(&mut state)
@@ -369,11 +450,10 @@ async fn event_loop() {
 
 fn main() {
     // stick::focus();
-    // pasts::block_on(event_loop());
     // stick::Controller::
 
     // listener.
-    simulate_roborio();
+    // simulate_roborio();
 
     let ipaddr = find_robot_ip(1114).expect("Failed to find roborio");
     // let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
@@ -384,8 +464,13 @@ fn main() {
     driverstation.set_request_code(*RobotRequestCode::new().set_normal(true));
 
     MessageConsole::create_new_thread(SystemConsoleOutput {}, ipaddr);
-
-    //TeamNumber::from(1114)
+    // MessageConsole::new(SystemConsoleOutput {}).run_blocking(ipaddr);
+    {
+        let driverstation = driverstation.clone();
+        std::thread::spawn(move ||{
+            pasts::block_on(event_loop(driverstation));
+        });
+    }
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(320.0, 240.0)),
@@ -398,7 +483,6 @@ fn main() {
         Box::new(|_cc| {
             Box::new(MyApp {
                 driverstation,
-                girls: Girls::new().unwrap(),
             })
         }),
     )
@@ -407,7 +491,6 @@ fn main() {
 
 struct MyApp {
     driverstation: Arc<RobotComm>,
-    girls: Girls,
 }
 
 impl eframe::App for MyApp {
@@ -439,44 +522,6 @@ impl eframe::App for MyApp {
 
             if control.is_driverstation_attached() {
                 ui.label("NO IDEA");
-            }
-
-            if let Some(event) = self.girls.next_event() {
-                match event.event {
-                    // gilrs::EventType::ButtonPressed(_, _) => todo!(),
-                    // gilrs::EventType::ButtonRepeated(_, _) => todo!(),
-                    // gilrs::EventType::ButtonReleased(_, _) => todo!(),
-                    // gilrs::EventType::ButtonChanged(_, _, _) => todo!(),
-                    // gilrs::EventType::AxisChanged(_, _, _) => todo!(),
-                    gilrs::EventType::Connected => {}
-                    gilrs::EventType::Disconnected => {}
-                    // gilrs::EventType::Dropped => todo!(),
-                    _ => {}
-                }
-            }
-
-            for (b, c) in self.girls.gamepads() {
-                // println!("{b}, {c:#?}");
-                let mut joystick = Joystick::new();
-                // println!("{}", c.name());
-                if c.name() == "input-remapper gamepad" {
-                    continue;
-                }
-                for buttons in c.state().buttons() {
-                    // println!("{:?}", buttons);
-                    // buttons.0
-                    joystick.push_button(buttons.1.is_pressed());
-                }
-                for axis in c.state().axes() {
-                    // println!("actual: {} got: {}", axis.1.value(), (axis.1.value() * 128.0 - 0.5) as i8);
-                    joystick.push_axis((axis.1.value() * 128.0 - 0.5) as i8);
-                    // println!("{:?}", axis);
-                }
-                // println!("{:#?}", joystick);
-                // for axis in c.state().{
-
-                // }
-                self.driverstation.update_joystick(0, joystick);
             }
 
             ui.horizontal(|ui| {

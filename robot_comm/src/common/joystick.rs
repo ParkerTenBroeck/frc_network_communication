@@ -1,5 +1,5 @@
 use util::{
-    buffer_reader::{BufferReader, BufferReaderError, ReadFromBuf},
+    buffer_reader::{BufferReader, BufferReaderError, CreateFromBuf, ReadFromBuf},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
@@ -28,7 +28,7 @@ impl<'a> WriteToBuff<'a> for Joysticks {
 impl Debug for Joysticks {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Joysticks")
-            //.field("joysticks", &&self.data[..self.length])
+            .field("joysticks", &self.data)
             .finish()
     }
 }
@@ -65,6 +65,15 @@ impl Joysticks {
             None
         }
     }
+
+    pub fn get_o_mut(&mut self, index: usize) -> Option<&mut Option<Joystick>> {
+        self.data.get_mut(index)
+    }
+
+    #[inline(always)]
+    pub fn delete(&mut self, i: usize) {
+        self.data[i] = None;
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -81,6 +90,10 @@ impl NonNegU16 {
         Self(val)
     }
 
+    pub fn none() -> Self{
+        Self(0xFFFF)
+    }
+
     pub fn get(&self) -> Option<u16> {
         if self.0 == 0xFFFF {
             None
@@ -94,8 +107,11 @@ impl NonNegU16 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ButtonLenOverflow;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PovLenOverflow;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AxisLenOverflow;
 
 #[derive(Debug)]
@@ -230,6 +246,60 @@ impl Joystick {
             None
         }
     }
+
+    pub fn clear_axis(&mut self) {
+        unsafe{
+            self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() & !0b1111)
+        }
+    }
+
+    pub fn clear_povs(&mut self) {
+        unsafe{
+            self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() & !0b1110000)
+        }
+    }
+
+    pub fn clear_buttons(&mut self) {
+        self.buttons = 0;
+    }
+
+    pub fn set_button(&mut self, index: u8, bool: bool) -> Result<(), ButtonLenOverflow>{
+        if index < 10 {
+            self.buttons = self.buttons & !(1 << index as u32) | ((bool as u32) << (index as u32));
+            self.buttons_len = self.buttons_len.max(index + 1);
+            Ok(())
+        }else{
+            Err(ButtonLenOverflow)
+        }
+    }
+
+    pub fn set_pov(&mut self, pov: u8, val: NonNegU16) -> Result<(), PovLenOverflow> {
+        if pov < 2{
+            unsafe{
+                *self.povs.get_unchecked_mut(pov as usize) = val;
+                if pov >= self.povs_len(){
+                    self.axis_povs = NonZeroU8::new_unchecked((self.axis_povs.get() & 0b1000_1111) + ((pov + 1) << 4));
+                }
+            }
+            Ok(())
+        }else{
+            Err(PovLenOverflow)
+        }
+    }
+
+    pub fn set_axis(&mut self, axis: u8, val: i8) -> Result<(), AxisLenOverflow> {
+        if axis < 11{
+            unsafe{
+                *self.axis.get_unchecked_mut(axis as usize) = val;
+                if axis >= self.axis_len(){
+                    self.axis_povs = NonZeroU8::new_unchecked((self.axis_povs.get() & 0b1111_0000) + (axis + 1));
+                }
+            }
+            Ok(())
+        }else{
+            Err(AxisLenOverflow)
+        }
+    }
 }
 
 impl Default for Joystick {
@@ -265,10 +335,41 @@ impl<'a> WriteToBuff<'a> for Joystick {
     }
 }
 
-impl<'a> ReadFromBuf<'a> for Joystick {
+impl<'a> ReadFromBuf<'a> for Joystick{
     type Error = JoystickParseError;
 
-    fn read_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn read_into_from_buf(&mut self, buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<(), Self::Error> {
+        self.clear_axis();
+
+        for axis in buf.read_short_u8_arr()? {
+            self.push_axis(*axis as i8)?;
+        }
+
+        self.clear_buttons();
+        let buttons_len = buf.read_u8()?;
+        if buttons_len > 32 {
+            Err(JoystickParseError::ButtonLenOverflow(buttons_len))?
+        }
+
+        for _ in 0..((buttons_len + 7) / 8) {
+            self.buttons = (self.buttons << 8) | buf.read_u8()? as u32;
+        }
+        self.buttons_len = buttons_len;
+
+        self.clear_povs();
+        for _ in 0..buf.read_u8()? {
+            self.push_pov(NonNegU16::new(buf.read_u16()?))?;
+        }
+
+        buf.assert_empty()?;
+
+        Ok(())
+    }
+}
+
+impl<'a> CreateFromBuf<'a> for Joystick {
+
+    fn create_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
         let mut joy = Joystick::default();
 
         for axis in buf.read_short_u8_arr()? {
@@ -277,7 +378,7 @@ impl<'a> ReadFromBuf<'a> for Joystick {
 
         let buttons_len = buf.read_u8()?;
         if buttons_len > 32 {
-            //TODO: return an error
+            Err(JoystickParseError::ButtonLenOverflow(buttons_len))?
         }
         for _ in 0..((buttons_len + 7) / 8) {
             joy.buttons = (joy.buttons << 8) | buf.read_u8()? as u32;

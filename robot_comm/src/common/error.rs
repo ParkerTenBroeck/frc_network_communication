@@ -15,6 +15,7 @@ pub enum RobotPacketParseError {
     InvalidStationCode(u8),
     JoystickParseError(JoystickParseError),
     DriverToRobotInvalidExtraTag(u8),
+    TooManyJoysticksInPacket,
     // robot to driver
     RobotToDriverInvalidCommVersion(u8),
     RobotToDriverInvalidUsageTag(u8),

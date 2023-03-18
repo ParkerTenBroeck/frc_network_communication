@@ -1,7 +1,7 @@
 use std::{
     cell::UnsafeCell,
     sync::{atomic::AtomicU32, Arc, Mutex, MutexGuard},
-    time::{Duration, Instant},
+    time::{Duration},
 };
 
 use util::{buffer_writter::SliceBufferWritter, robot_voltage::RobotVoltage, socket::Socket};
@@ -73,7 +73,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                             // last_received = Instant::now();
 
                             let robot_send = RobotToDriverstationPacket {
-                                packet: packet.core_data.packet,
+                                sequence: packet.core_data.sequence,
                                 tag_comm_version: 1,
                                 control_code: unsafe { *self.observed_control_state.get() },
                                 status: unsafe { *self.observed_status.get() },

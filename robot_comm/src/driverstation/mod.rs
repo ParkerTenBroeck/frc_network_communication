@@ -95,6 +95,8 @@ impl RobotComm {
             return;
         };
 
+        let mut packet = RobotToDriverstationPacket::default();
+
         let mut buf = [0u8; 4069];
         let mut request_time = false;
 
@@ -129,7 +131,7 @@ impl RobotComm {
 
             // write our packet to the buffer
             let mut writter = SliceBufferWritter::new(&mut buf);
-            let packet_sent_sqeu = cb1_lock.core_data.packet;
+            let packet_sent_sqeu = cb1_lock.core_data.sequence;
             let res = cb1_lock.write_to_buf(&mut writter);
 
             // copy our sent core data out
@@ -137,7 +139,7 @@ impl RobotComm {
             let _core_copy = cb1_lock.core_data;
 
             // update the packet count (wrapping)
-            cb1_lock.core_data.packet = cb1_lock.core_data.packet.wrapping_add(1);
+            cb1_lock.core_data.sequence = cb1_lock.core_data.sequence.wrapping_add(1);
 
             //drop our lock we dont need access to the packet anymore
             drop(cb1_lock);
@@ -168,7 +170,7 @@ impl RobotComm {
                     let now = std::time::Instant::now();
 
                     let start = Instant::now();
-                    let res = socket.read::<RobotToDriverstationPacket>(&mut buf);
+                    let res = socket.read_into(&mut packet, &mut buf);
                     let time = start.elapsed();
 
                     if let Ok(Some(packet)) = res {
@@ -177,13 +179,24 @@ impl RobotComm {
                         let mut other_lock = self.other_data.lock().unwrap();
 
                         other_lock.observed_control = packet.control_code;
+
+                        {
+                            // let mut cb1_lock = self.packet_data.lock().unwrap();
+
+                            // // if our stored control code hasnt changed since we last sent a packet
+                            // // override it with our observed control code
+                            // if _core_copy.control_code == cb1_lock.core_data.control_code{
+                            //     cb1_lock.core_data.control_code = packet.control_code;   
+                            // }
+                        }
+
                         other_lock.observed_voltage = packet.battery;
                         other_lock.observed_state = packet.status;
 
-                        if packet.packet < packet_sent_sqeu && packet.packet != 0 {
+                        if packet.sequence < packet_sent_sqeu && packet.sequence != 0 {
                             println!(
                                 "\u{001B}[31m{}\u{001b}[0m{}",
-                                packet.packet, packet_sent_sqeu
+                                packet.sequence, packet_sent_sqeu
                             );
                             packet_behind = true;
                         }
@@ -271,6 +284,13 @@ impl RobotComm {
             .unwrap()
             .joystick_data
             .insert(index, joystick);
+    }
+
+    pub fn modify_joystick(&self, index: usize, cb: impl FnOnce(&mut Option<Joystick>)){
+        cb(self.packet_data
+            .lock()
+            .unwrap()
+            .joystick_data.get_o_mut(index).unwrap())
     }
 
     pub fn set_enabled(&self) {

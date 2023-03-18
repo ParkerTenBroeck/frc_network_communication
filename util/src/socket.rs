@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer_reader::{BufferReader, ReadFromBuf},
+    buffer_reader::{BufferReader, CreateFromBuf, ReadFromBuf},
     buffer_writter::{BufferWritter, WriteToBuff},
 };
 
@@ -145,7 +145,7 @@ impl<T: std::fmt::Debug> From<std::io::Error> for SocketWriteError<T> {
 impl Socket {
     pub fn read<'a, T>(&mut self, buf: &'a mut [u8]) -> Result<Option<T>, SocketReadError<T::Error>>
     where
-        T: ReadFromBuf<'a>,
+        T: CreateFromBuf<'a>,
         <T as ReadFromBuf<'a>>::Error: std::error::Error + 'static,
     {
         let read = match self.socket.recv_from(buf) {
@@ -171,8 +171,48 @@ impl Socket {
             let got = &buf[..read];
             let mut buff = BufferReader::new(got);
 
-            let rec = match T::read_from_buf(&mut buff) {
+            let rec = match T::create_from_buf(&mut buff) {
                 Ok(ok) => Some(ok),
+                Err(err) => return Err(SocketReadError::Buffer(err)),
+            };
+
+            self.packets_received += 1;
+            self.bytes_recieved += read;
+
+            Ok(rec)
+        }
+    }
+
+    pub fn read_into<'a, T>(&mut self, val: &'a mut T, buf: &'a mut [u8]) -> Result<Option<&'a mut T>, SocketReadError<T::Error>>
+    where
+        T: CreateFromBuf<'a>,
+        <T as ReadFromBuf<'a>>::Error: std::error::Error + 'static,
+    {
+        let read = match self.socket.recv_from(buf) {
+            Ok(read) => {
+                if let SendTargetAddr::LastReceved(addr) = &mut self.send_target {
+                    *addr = read.1;
+                    addr.set_port(self.send_port)
+                }
+                read.0
+            }
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::WouldBlock {
+                    // we dont treat this as a hard error just return none
+                    0
+                } else {
+                    Err(err)?
+                }
+            }
+        };
+        if read == 0 {
+            Ok(None)
+        } else {
+            let got = &buf[..read];
+            let mut buff = BufferReader::new(got);
+
+            let rec = match val.read_into_from_buf(&mut buff) {
+                Ok(ok) => Some(val),
                 Err(err) => return Err(SocketReadError::Buffer(err)),
             };
 

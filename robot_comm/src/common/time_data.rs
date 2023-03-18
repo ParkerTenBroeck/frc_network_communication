@@ -45,6 +45,11 @@ impl TimeData {
         Ok(())
     }
 
+    pub fn empty(&mut self){
+        self.time = None;
+        self.time_zone = None;
+    }
+
     pub fn read_time_zone_date(
         &mut self,
         buf: &mut BufferReader<'_>,
@@ -81,10 +86,6 @@ impl TimeData {
             time: Some(chrono::Utc::now().naive_utc()),
             time_zone: Some(Tz::UCT),
         }
-    }
-
-    pub fn format_date(&self) -> Option<()> {
-        todo!()
     }
 }
 

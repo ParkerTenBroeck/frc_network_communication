@@ -3,7 +3,7 @@ pub mod error;
 use std::borrow::Cow;
 
 use util::{
-    buffer_reader::{BufferReaderError, ReadFromBuf},
+    buffer_reader::{BufferReaderError, CreateFromBuf, ReadFromBuf},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
     team_number::TeamNumber,
 };
@@ -14,9 +14,9 @@ use self::error::{Errors, Warnings};
 pub enum VersionInfo<'a> {
     LibCVersion(Cow<'a, str>),
     ImageVersion(Cow<'a, str>),
-    CANTalon(u8),
-    PDP(u8),
-    PCM(u8),
+    CANTalon(u16, u8),
+    PDP(u16, u8),
+    PCM(u16, u8),
     Empty,
 }
 
@@ -26,18 +26,18 @@ impl<'a> VersionInfo<'a> {
             VersionInfo::LibCVersion(_) => "FRC_Lib_Version",
             VersionInfo::ImageVersion(_) => "roboRIO Image",
             VersionInfo::Empty
-            | VersionInfo::CANTalon(_)
-            | VersionInfo::PDP(_)
-            | VersionInfo::PCM(_) => "",
+            | VersionInfo::CANTalon( .. )
+            | VersionInfo::PDP( .. )
+            | VersionInfo::PCM( .. ) => "",
         }
     }
 
     fn device_id(&self) -> u8 {
         match self {
             VersionInfo::LibCVersion(_) | VersionInfo::ImageVersion(_) => 0,
-            VersionInfo::CANTalon(_) => 2,
-            VersionInfo::PDP(_) => 8,
-            VersionInfo::PCM(_) => 9,
+            VersionInfo::CANTalon( .. ) => 2,
+            VersionInfo::PDP( .. ) => 8,
+            VersionInfo::PCM( .. ) => 9,
             VersionInfo::Empty => 0,
         }
     }
@@ -95,6 +95,75 @@ pub enum MessageKind<'a> {
         unknwon: u8,
         usage: (),
     },
+}
+
+struct Test<'a>{
+    data: &'a u8,
+}
+
+pub enum MessageKindBorrowed<'a> {
+    ZeroCode {
+        msg: &'a str,
+    },
+    VersionInfo {
+        // kind: VersionInfo<'a>,
+    },
+    Message {
+        ms: u32,
+        msg_num: u16,
+        msg: &'a str,
+    },
+    Error {
+        ms: u32,
+        msg_num: u16,
+        err: u32,
+        msg: &'a str,
+        loc: &'a str,
+        stack: &'a str,
+    },
+    // Warning {
+    //     ms: u32,
+    //     msg_num: u16,
+    //     warn: u32,
+    //     msg: &'a str,
+    //     loc: &'a str,
+    //     stack: &'a str,
+    // },
+    UnderlineAnd5VDisable {
+        disable_5v: u16,
+        /// when this is 2 the top row on the power/can metrics has a red underline
+        top_signal: u8,
+        /// when this is 2 the second top row on the power/can metrics has a red underline
+        second_top_signal: u8,
+        /// when this is 2 the third top row on the power/can metrics has a red underline
+        third_top_signal: u8,
+    },
+    DisableFaults {
+        comms: u16,
+        fault_12v: u16,
+    },
+    RailFaults {
+        short_6v: u16,
+        short_5v: u16,
+        short_3_3v: u16,
+    },
+    UsageReport {
+        team: TeamNumber,
+        unknwon: u8,
+        usage: (),
+    },
+}
+
+
+mod test{
+    use std::mem::size_of;
+
+    use crate::robot_to_driverstation::{MessageKind, VersionInfo, MessageKindBorrowed};
+
+    #[test]
+    pub fn test(){
+        panic!("{}, {}", size_of::<MessageKind>(), size_of::<MessageKindBorrowed>())
+    }
 }
 
 impl<'a> MessageKind<'a> {
@@ -211,10 +280,17 @@ impl From<BufferReaderError> for MessageReadError {
     }
 }
 
-impl<'a> ReadFromBuf<'a> for Message<'a> {
+impl<'a> ReadFromBuf<'a> for Message<'a>{
     type Error = MessageReadError;
 
-    fn read_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn read_into_from_buf(&mut self, buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<(), Self::Error> {
+        todo!()
+    }
+}
+
+impl<'a> CreateFromBuf<'a> for Message<'a> {
+
+    fn create_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
         // tells us how to treat the rest of the data
         let msg_code = buf.read_u8()?;
 
@@ -246,28 +322,27 @@ impl<'a> ReadFromBuf<'a> for Message<'a> {
                                 }
                             }
                             2 => {
-                                buf.assert_n_zero(2)?;
+                                let idk = buf.read_u16()?;
                                 //maybe the can id ??
                                 let can_id = buf.read_u8()?;
                                 buf.assert_n_zero(2)?;
                                 buf.assert_empty()?;
-                                VersionInfo::CANTalon(can_id)
+                                VersionInfo::CANTalon(idk, can_id)
                             }
                             8 => {
-                                buf.assert_n_zero(2)?;
+                                let idk = buf.read_u16()?;
                                 //maybe the can id ??
                                 let can_id = buf.read_u8()?;
-                                buf.assert_n_zero(2)?;
                                 buf.assert_empty()?;
-                                VersionInfo::PDP(can_id)
+                                VersionInfo::PDP(idk, can_id)
                             }
                             9 => {
-                                buf.assert_n_zero(2)?;
+                                let idk = buf.read_u16()?;
                                 //maybe the can id ??
                                 let can_id = buf.read_u8()?;
                                 buf.assert_n_zero(2)?;
                                 buf.assert_empty()?;
-                                VersionInfo::PCM(can_id)
+                                VersionInfo::PCM(idk, can_id)
                             }
                             _ => Err(MessageReadError::InvalidVersionDeviceTag(device_id))?,
                         }
@@ -419,10 +494,10 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                         buf.write_short_str(kind.get_tag())?;
                         buf.write_short_str(msg)?;
                     }
-                    VersionInfo::CANTalon(can_id)
-                    | VersionInfo::PDP(can_id)
-                    | VersionInfo::PCM(can_id) => {
-                        buf.write_u16(0)?;
+                    VersionInfo::CANTalon(idk, can_id)
+                    | VersionInfo::PDP(idk, can_id)
+                    | VersionInfo::PCM(idk, can_id) => {
+                        buf.write_u16(*idk)?;
                         buf.write_u8(*can_id)?;
                         //tags and strings
                         buf.write_u16(0)?;

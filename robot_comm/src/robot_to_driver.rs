@@ -1,5 +1,7 @@
+use std::{mem::size_of};
+
 use util::{
-    buffer_reader::ReadFromBuf,
+    buffer_reader::{CreateFromBuf, ReadFromBuf},
     buffer_writter::{BufferWritter, BufferWritterError, WriteToBuff},
 };
 
@@ -9,9 +11,9 @@ use crate::common::{
     robot_voltage::RobotVoltage,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct RobotToDriverstationPacket {
-    pub packet: u16,
+    pub sequence: u16,
     pub tag_comm_version: u8,
     pub control_code: ControlCode,
     pub status: RobotStatusCode,
@@ -23,11 +25,8 @@ trait RobotToDriverPacketAdditions<'a>: BufferWritter<'a> {
     const ID: u8;
 }
 
-pub struct RobotToDriverCpuUsage<const CPUS: usize> {
-    pub usages: [CpuUsage; CPUS],
-}
 
-#[repr(packed(1))]
+#[repr(C, packed(1))]
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct CpuUsage {
     pub user: f32,
@@ -66,7 +65,7 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
     type Error = BufferWritterError;
 
     fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
-        buf.write_u16(self.packet)?;
+        buf.write_u16(self.sequence)?;
         buf.write_u8(self.tag_comm_version)?;
         buf.write_u8(self.control_code.to_bits())?;
         buf.write_u8(self.status.to_bits())?;
@@ -124,25 +123,25 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         // // buf.write_buf(&[255, 171, 85])?;
         // buf.write_buf(&[self.packet as u8; 25])?;
         let mut buf = buf.create_u8_size_guard()?;
-        match self.packet & 7 {
+        match self.sequence & 7 {
             0 => {
                 // ram
                 buf.write_u8(6)?;
                 // num bytes free
-                buf.write_u64((self.packet as u64) << 22)?;
+                buf.write_u64((self.sequence as u64) << 22)?;
             }
             1 => {
                 // disk
                 buf.write_u8(4)?;
                 // num bytes free
-                buf.write_u64((self.packet as u64) << 31)?;
+                buf.write_u64((self.sequence as u64) << 31)?;
             }
             2 => {
                 // can usage
                 buf.write_u8(0x0e)?;
 
                 // utilization % [0, 1.0]
-                buf.write_f32((self.packet % 200) as f32 / 200.0)?;
+                buf.write_f32((self.sequence % 200) as f32 / 200.0)?;
                 // Bus Off
                 buf.write_u32(5)?;
                 // TX Full
@@ -161,7 +160,7 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
 
                 // 16 pdp values each being 10 bits each
                 // with 4 bits of padding every 8 bytes
-                let pdp = [self.packet; 16];
+                let pdp = [self.sequence; 16];
                 for i in 0..2 {
                     let mut chunck = 0u64;
                     for val in &pdp[(i * 5)..(i * 5 + 5)] {
@@ -206,12 +205,96 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
     }
 }
 
-impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket {
+impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket{
     type Error = RobotPacketParseError;
 
-    fn read_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn read_into_from_buf(&mut self, buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<(), Self::Error> {
+        
+        self.sequence = buf.read_u16()?;
+        self.tag_comm_version = buf.read_u8()?;
+        if self.tag_comm_version != 1{
+            Err(RobotPacketParseError::RobotToDriverInvalidCommVersion(self.tag_comm_version))?
+        }
+
+        self.control_code = ControlCode::from_bits(buf.read_u8()?);
+        self.status = RobotStatusCode::from_bits(buf.read_u8()?);
+        self.battery.read_into_from_buf(buf)?;
+        self.request = DriverstationRequestCode::from_bits(buf.read_u8()?);
+        // std::slice::from_mut(s)
+
+        while buf.has_more(){
+            let mut buf = buf.sized_u8_reader()?;
+            if buf.remaining_buf_len() == 0 {
+                continue;
+            }
+            let extra_id = buf.read_u8()?;
+
+            match extra_id {
+                1 => {
+                    let left_rumble = buf.read_u16()?;
+                    let right_rumble = buf.read_u16()?;
+                }
+                4 => {
+                    let usage = buf.read_u64()?;
+                    println!("disk usage: {usage}")
+                }
+                5 => {
+                    let cpus = buf.read_u8()? as usize;
+                    // let buf = buf.read_amount(cpus * size_of::<CpuUsage>())?;
+                    // let slice: &[CpuUsage] = unsafe{
+                    //     std::slice::from_raw_parts(buf.as_ptr().cast(), cpus)
+                    // };
+                    // println!("CpuUsage: {slice:#?}")
+                    for i in 0..cpus {
+                        // so these should all sum together to get the total CPU% [0.0, 100.0]
+                        let robot = buf.read_f32()?;
+                        let f2 = buf.read_f32()?;
+                        let f3 = buf.read_f32()?;
+                        let system = buf.read_f32()?;
+
+                        println!("cpu: {i} -> user: {robot:.2} {f2:.2} {f3:.2} system?: {system:.2} total: {}", robot + system + f2 + f3)
+                    }
+                }
+                6 => {
+                    let usage = buf.read_u64()?;
+                    println!("ram usage: {}", usage)
+                }
+                8 => {
+                    let zeros = buf.read_amount(22)?;
+                    let ff = buf.read_u8()?;
+                    let num = buf.read_u16()? as i16;
+                    println!("8 usage: {:?}, 0xff: {:02X}, num: {}", zeros, ff, num);
+                }
+                9 => {
+                    println!("9 usage: {:?}", buf.read_amount(buf.remaining_buf_len())?)
+                }
+                14 => {
+                    // utilization % [0, 1.0]
+                    let utilization = buf.read_f32()?;
+                    // Bus Off
+                    let bus_off = buf.read_u32()?;
+                    // TX Full
+                    let tx_full = buf.read_u32()?;
+                    // Recieve
+                    let recieve = buf.read_u8()?;
+                    // Transmit
+                    let transmit = buf.read_u8()?;
+
+                    println!("uti %{utilization:.2}, bus_off: {bus_off}, tx_full: {tx_full}, rx: {recieve}, ts: {transmit}");
+                }
+                invalid => Err(RobotPacketParseError::RobotToDriverInvalidUsageTag(invalid))?,
+            }
+            
+        }
+        Ok(())
+    }
+}
+
+impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
+
+    fn create_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
         let base = Self {
-            packet: buf.read_u16()?,
+            sequence: buf.read_u16()?,
             tag_comm_version: {
                 let com = buf.read_u8()?;
                 if com != 1 {
@@ -221,7 +304,7 @@ impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket {
             },
             control_code: ControlCode::from_bits(buf.read_u8()?),
             status: RobotStatusCode::from_bits(buf.read_u8()?),
-            battery: RobotVoltage::read_from_buf(buf)?,
+            battery: RobotVoltage::create_from_buf(buf)?,
             request: DriverstationRequestCode::from_bits(buf.read_u8()?),
         };
 
@@ -295,7 +378,7 @@ impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket {
 #[allow(unused)]
 mod tests {
     use util::{
-        buffer_reader::{BufferReader, ReadFromBuf},
+        buffer_reader::{BufferReader, CreateFromBuf},
         buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
         robot_voltage::RobotVoltage,
     };
@@ -311,7 +394,7 @@ mod tests {
     #[test]
     pub fn packet_write_and_read() {
         let packet = RobotToDriverstationPacket {
-            packet: 0x1234,
+            sequence: 0x1234,
             tag_comm_version: 1,
             control_code: *ControlCode::new()
                 .set_enabled()
@@ -329,7 +412,7 @@ mod tests {
             .expect("Failed to write to buffer");
 
         let mut bufr = BufferReader::new(bufw.curr_buf());
-        let read_packet = RobotToDriverstationPacket::read_from_buf(&mut bufr)
+        let read_packet = RobotToDriverstationPacket::create_from_buf(&mut bufr)
             .expect("Failed to read packet from buffer");
 
         assert_eq!(
