@@ -11,8 +11,8 @@ use robot_comm::{
         alliance_station::AllianceStation,
         control_code::ControlCode,
         joystick::{Joystick, NonNegU16},
-        request_code::RobotRequestCode,
-        time_data::TimeData,
+        request_code::{RobotRequestCode, DriverstationRequestCode},
+        time_data::TimeData, roborio_status_code::RobotStatusCode,
     },
     driver_to_robot::{
         reader::{DriverToRobotPacketReader, PacketTagAcceptor},
@@ -107,6 +107,10 @@ impl RoborioCom {
                 myself.udp.bytes_sent.store(0, Relaxed);
                 *myself.udp.time.lock() = TimeData::default();
                 *myself.udp.joystick_values.lock() = [None; 6];
+                *myself.udp.observed_information.lock() = RobotToDriverstationPacket {
+                    tag_comm_version: 1,
+                    ..Default::default()
+                };
                 *myself.udp.countdown.lock() = None;
 
                 let mut send_addr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
@@ -135,35 +139,38 @@ impl RoborioCom {
                                     {
                                         //scope to make sure our mutexes aren't locked 0w0
                                         let mut packet = myself.udp.observed_information.lock();
-
+                                        
                                         // todo in the case of packets dropping
                                         // while this value wraps this value is incremented
                                         // much more than the actual number of packets dropped...
                                         // idk dont do that or something
-                                        if packet.sequence != recv_packet.sequence.wrapping_sub(1)
+                                        let lower = packet.sequence.wrapping_add(1);
+                                        let higher = recv_packet.sequence;
+                                        if lower != higher
                                             && myself.udp.connected.load(Relaxed)
                                         {
-                                            let calc_dif = packet
-                                                .sequence
-                                                .wrapping_sub(recv_packet.sequence)
-                                                .wrapping_sub(1)
-                                                as usize;
-                                            myself.udp.packets_dropped.fetch_add(calc_dif, Relaxed);
+                                            let calc_dif = if lower < higher{
+                                                higher.wrapping_sub(lower)
+                                            }else if lower > higher{
+                                                lower.wrapping_sub(higher)
+                                            }else{
+                                                0
+                                            };
+                                            myself.udp.packets_dropped.fetch_add(calc_dif as usize, Relaxed);
                                         }
-                                        if recv_packet.control_code.is_disabled() {
-                                            // packet.request.set_request_disable(false);
-                                        }
+                                        
                                         packet.sequence = recv_packet.sequence;
-                                        let packet = {
-                                            let tmp = *packet;
-                                            drop(packet);
-                                            tmp
-                                        };
+                                        
                                         let mut writter = SliceBufferWritter::new(&mut send_buf);
                                         let idk = robot_to_driver::writter::RobotToDriverstaionPacketWritter::new(
                                             &mut writter,
-                                            packet,
+                                            *packet,
                                         );
+
+                                        if recv_packet.control_code.is_disabled(){
+                                            packet.request.set_request_disable(false);
+                                        }
+                                        drop(packet);
 
                                         let mut idk = if let Ok(val) = idk {
                                             val
@@ -175,11 +182,8 @@ impl RoborioCom {
                                         {
                                             let lock = myself.udp.tag_data.lock();
                                         }
-
-                                        match socket.send_to(
-                                            idk.into_buf(),
-                                            SocketAddr::new(send_addr, 1150),
-                                        ) {
+                                        match socket.send_to(idk.into_buf(), SocketAddr::new(send_addr, 1150))
+                                        {
                                             Ok(wrote) => {
                                                 myself.udp.bytes_sent.fetch_add(wrote, Relaxed);
                                                 myself.udp.packets_sent.fetch_add(1, Relaxed);
@@ -273,9 +277,17 @@ impl RoborioCom {
     // pub fn
 }
 
-impl RoborioCom{
-    pub fn reset_con(&self){
-        self.udp.reset_con.store(true, std::sync::atomic::Ordering::Relaxed);
+impl RoborioCom {
+    pub fn reset_con(&self) {
+        self.udp
+            .reset_con
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn crash_driverstation(&self){
+        let mut lock = self.udp.observed_information.lock();
+        lock.tag_comm_version = 0;
+        lock.request = DriverstationRequestCode::from_bits(0xFF);
     }
 }
 
@@ -341,16 +353,28 @@ impl RoborioCom {
         lock.status.set_test();
     }
 
-    pub fn observe_robot_estop(&self) {
+    pub fn observe_robot_estop(&self, estopped: bool) {
         let mut lock = self.udp.observed_information.lock();
         lock.status.set_disabled();
-        lock.control_code.set_disabled().set_estop(true);
+        lock.control_code.set_disabled().set_estop(estopped);
     }
+
+    // pub fn observe_restart_roborio_code(&self) {
+    //     todo!()// self.udp.observed_information.lock().status = RobotStatusCode::from_bits(0x31);
+    // }
 
     pub fn observe_robot_disabled(&self) {
         let mut lock = self.udp.observed_information.lock();
-        lock.control_code.set_disabled().set_estop(false);
+        lock.control_code.set_disabled();
         lock.status.set_disabled();
+    }
+
+    pub fn is_brownout_protection(&self) -> bool{
+        self.udp.observed_information.lock().control_code.is_brown_out_protection()
+    }
+
+    pub fn is_estopped(&self) -> bool{
+        self.udp.observed_information.lock().control_code.is_estop()
     }
 
     pub fn get_control_code(&self) -> ControlCode {
@@ -373,13 +397,16 @@ impl RoborioCom {
         *self.udp.time.lock()
     }
 
-
-    pub fn get_request_time(&self) -> bool{
+    pub fn get_request_time(&self) -> bool {
         self.udp.observed_information.lock().request.request_time()
     }
 
-    pub fn get_request_disable(&self) -> bool{
-        self.udp.observed_information.lock().request.request_disabled()
+    pub fn get_request_disable(&self) -> bool {
+        self.udp
+            .observed_information
+            .lock()
+            .request
+            .request_disabled()
     }
 
     pub fn get_udp_packets_dropped(&self) -> usize {

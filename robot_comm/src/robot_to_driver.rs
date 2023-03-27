@@ -187,7 +187,6 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         buf.write_u8(self.status.to_bits())?;
         buf.write_u8(self.battery.int)?;
         buf.write_u8(self.battery.dec)?;
-        // println!("{:#?}", self.request);
         buf.write_u8(self.request.to_bits())?;
 
         return Ok(());

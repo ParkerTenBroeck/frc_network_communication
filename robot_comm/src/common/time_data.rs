@@ -54,7 +54,7 @@ impl TimeData {
         &mut self,
         buf: &mut BufferReader<'_>,
     ) -> Result<(), RobotPacketParseError> {
-        let tz = buf.read_str(buf.total_packet_size())?;
+        let tz = buf.read_str(buf.remaining_buf_len())?;
         self.time_zone = Some(
             tz.parse()
                 .map_err(|_| RobotPacketParseError::InvalidTimeZoneData)?,
