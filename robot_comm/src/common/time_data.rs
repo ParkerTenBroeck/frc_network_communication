@@ -10,7 +10,7 @@ use util::{
 
 use super::error::RobotPacketParseError;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct TimeData {
     time: Option<NaiveDateTime>,
     time_zone: Option<Tz>,
@@ -45,7 +45,7 @@ impl TimeData {
         Ok(())
     }
 
-    pub fn empty(&mut self){
+    pub fn empty(&mut self) {
         self.time = None;
         self.time_zone = None;
     }
@@ -72,7 +72,7 @@ impl TimeData {
         self.time.is_some() | self.time_zone.is_some()
     }
 
-    pub fn copy_existing_from(&mut self, other: &Self) {
+    pub fn update_existing_from(&mut self, other: &Self) {
         if other.time.is_some() {
             self.time = other.time;
         }

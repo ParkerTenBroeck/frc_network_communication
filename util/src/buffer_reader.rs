@@ -5,11 +5,10 @@ pub trait CreateFromBuf<'a>: Sized + ReadFromBuf<'a> {
     // fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error>;
 }
 
-pub trait ReadFromBuf<'a>{
+pub trait ReadFromBuf<'a> {
     type Error;
-    fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error>;
+    fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<&mut Self, Self::Error>;
 }
-
 
 #[derive(Debug)]
 pub enum BufferReaderError {
@@ -40,22 +39,21 @@ impl std::fmt::Display for BufferReaderError {
 }
 
 impl<'a> CreateFromBuf<'a> for &'a [u8] {
-
     fn create_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
-        Ok(buf.raw_buff())    
+        Ok(buf.raw_buff())
     }
 
     // fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error> {
-        
+
     //     Ok(())
     // }
 }
 
-impl<'a> ReadFromBuf<'a> for &'a [u8]{
+impl<'a> ReadFromBuf<'a> for &'a [u8] {
     type Error = BufferReaderError;
-    fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<(), Self::Error> {
-        *self = buf.raw_buff(); 
-        Ok(())
+    fn read_into_from_buf(&mut self, buf: &mut BufferReader<'a>) -> Result<&mut Self, Self::Error> {
+        *self = buf.raw_buff();
+        Ok(self)
     }
 }
 
@@ -104,8 +102,7 @@ impl<'a> BufferReader<'a> {
     }
 
     pub fn read_u16(&mut self) -> Result<u16, BufferReaderError> {
-        let buf = self.read_amount(2)?;
-        Ok((buf[0] as u16) << 8 | buf[1] as u16)
+        Ok(u16::from_be_bytes(*self.read_const_amount::<2>()?))
     }
 
     pub fn read_u24(&mut self) -> Result<u32, BufferReaderError> {
@@ -114,23 +111,11 @@ impl<'a> BufferReader<'a> {
     }
 
     pub fn read_u32(&mut self) -> Result<u32, BufferReaderError> {
-        let buf = self.read_amount(4)?;
-        Ok(((buf[0] as u32) << 24)
-            | ((buf[1] as u32) << 16)
-            | ((buf[2] as u32) << 8)
-            | buf[3] as u32)
+        Ok(u32::from_be_bytes(*self.read_const_amount::<4>()?))
     }
 
     pub fn read_u64(&mut self) -> Result<u64, BufferReaderError> {
-        let buf = self.read_amount(8)?;
-        Ok(((buf[0] as u64) << 56)
-            | ((buf[1] as u64) << 48)
-            | ((buf[2] as u64) << 40)
-            | ((buf[3] as u64) << 32)
-            | ((buf[4] as u64) << 24)
-            | ((buf[5] as u64) << 16)
-            | ((buf[6] as u64) << 8)
-            | buf[7] as u64)
+        Ok(u64::from_be_bytes(*self.read_const_amount::<8>()?))
     }
 
     pub fn read_f32(&mut self) -> Result<f32, BufferReaderError> {

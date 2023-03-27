@@ -1,5 +1,5 @@
 [package]
-name = "robot_comm"
+name = "roborio"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 util = { path = "../util" }
-mycelium-bitfield = "*"
-chrono = "0.4.23"
-chrono-tz = "0.8.1"
-time = "*"
-modular-bitfield-msb = "0.11.2"
-bitfield = "*"
+robot_comm = { path = "../robot_comm" }
+net_comm = { path = "../net_comm" }
+rclite = "*"
+spin = "*"
+
+[features]

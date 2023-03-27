@@ -26,18 +26,18 @@ impl<'a> VersionInfo<'a> {
             VersionInfo::LibCVersion(_) => "FRC_Lib_Version",
             VersionInfo::ImageVersion(_) => "roboRIO Image",
             VersionInfo::Empty
-            | VersionInfo::CANTalon( .. )
-            | VersionInfo::PDP( .. )
-            | VersionInfo::PCM( .. ) => "",
+            | VersionInfo::CANTalon(..)
+            | VersionInfo::PDP(..)
+            | VersionInfo::PCM(..) => "",
         }
     }
 
     fn device_id(&self) -> u8 {
         match self {
             VersionInfo::LibCVersion(_) | VersionInfo::ImageVersion(_) => 0,
-            VersionInfo::CANTalon( .. ) => 2,
-            VersionInfo::PDP( .. ) => 8,
-            VersionInfo::PCM( .. ) => 9,
+            VersionInfo::CANTalon(..) => 2,
+            VersionInfo::PDP(..) => 8,
+            VersionInfo::PCM(..) => 9,
             VersionInfo::Empty => 0,
         }
     }
@@ -97,7 +97,7 @@ pub enum MessageKind<'a> {
     },
 }
 
-struct Test<'a>{
+struct Test<'a> {
     data: &'a u8,
 }
 
@@ -154,15 +154,18 @@ pub enum MessageKindBorrowed<'a> {
     },
 }
 
-
-mod test{
+mod test {
     use std::mem::size_of;
 
-    use crate::robot_to_driverstation::{MessageKind, VersionInfo, MessageKindBorrowed};
+    use crate::robot_to_driverstation::{MessageKind, MessageKindBorrowed, VersionInfo};
 
     #[test]
-    pub fn test(){
-        panic!("{}, {}", size_of::<MessageKind>(), size_of::<MessageKindBorrowed>())
+    pub fn test() {
+        panic!(
+            "{}, {}",
+            size_of::<MessageKind>(),
+            size_of::<MessageKindBorrowed>()
+        )
     }
 }
 
@@ -280,17 +283,21 @@ impl From<BufferReaderError> for MessageReadError {
     }
 }
 
-impl<'a> ReadFromBuf<'a> for Message<'a>{
+impl<'a> ReadFromBuf<'a> for Message<'a> {
     type Error = MessageReadError;
 
-    fn read_into_from_buf(&mut self, buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<(), Self::Error> {
+    fn read_into_from_buf(
+        &mut self,
+        buf: &mut util::buffer_reader::BufferReader<'a>,
+    ) -> Result<&mut Self, Self::Error> {
         todo!()
     }
 }
 
 impl<'a> CreateFromBuf<'a> for Message<'a> {
-
-    fn create_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn create_from_buf(
+        buf: &mut util::buffer_reader::BufferReader<'a>,
+    ) -> Result<Self, Self::Error> {
         // tells us how to treat the rest of the data
         let msg_code = buf.read_u8()?;
 

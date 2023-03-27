@@ -90,7 +90,7 @@ impl NonNegU16 {
         Self(val)
     }
 
-    pub fn none() -> Self{
+    pub fn none() -> Self {
         Self(0xFFFF)
     }
 
@@ -248,55 +248,54 @@ impl Joystick {
     }
 
     pub fn clear_axis(&mut self) {
-        unsafe{
-            self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() & !0b1111)
-        }
+        unsafe { self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() & !0b1111) }
     }
 
     pub fn clear_povs(&mut self) {
-        unsafe{
-            self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() & !0b1110000)
-        }
+        unsafe { self.axis_povs = NonZeroU8::new_unchecked(self.axis_povs.get() & !0b1110000) }
     }
 
     pub fn clear_buttons(&mut self) {
         self.buttons = 0;
     }
 
-    pub fn set_button(&mut self, index: u8, bool: bool) -> Result<(), ButtonLenOverflow>{
+    pub fn set_button(&mut self, index: u8, bool: bool) -> Result<(), ButtonLenOverflow> {
         if index < 10 {
             self.buttons = self.buttons & !(1 << index as u32) | ((bool as u32) << (index as u32));
             self.buttons_len = self.buttons_len.max(index + 1);
             Ok(())
-        }else{
+        } else {
             Err(ButtonLenOverflow)
         }
     }
 
     pub fn set_pov(&mut self, pov: u8, val: NonNegU16) -> Result<(), PovLenOverflow> {
-        if pov < 2{
-            unsafe{
+        if pov < 2 {
+            unsafe {
                 *self.povs.get_unchecked_mut(pov as usize) = val;
-                if pov >= self.povs_len(){
-                    self.axis_povs = NonZeroU8::new_unchecked((self.axis_povs.get() & 0b1000_1111) + ((pov + 1) << 4));
+                if pov >= self.povs_len() {
+                    self.axis_povs = NonZeroU8::new_unchecked(
+                        (self.axis_povs.get() & 0b1000_1111) + ((pov + 1) << 4),
+                    );
                 }
             }
             Ok(())
-        }else{
+        } else {
             Err(PovLenOverflow)
         }
     }
 
     pub fn set_axis(&mut self, axis: u8, val: i8) -> Result<(), AxisLenOverflow> {
-        if axis < 11{
-            unsafe{
+        if axis < 11 {
+            unsafe {
                 *self.axis.get_unchecked_mut(axis as usize) = val;
-                if axis >= self.axis_len(){
-                    self.axis_povs = NonZeroU8::new_unchecked((self.axis_povs.get() & 0b1111_0000) + (axis + 1));
+                if axis >= self.axis_len() {
+                    self.axis_povs =
+                        NonZeroU8::new_unchecked((self.axis_povs.get() & 0b1111_0000) + (axis + 1));
                 }
             }
             Ok(())
-        }else{
+        } else {
             Err(AxisLenOverflow)
         }
     }
@@ -335,10 +334,13 @@ impl<'a> WriteToBuff<'a> for Joystick {
     }
 }
 
-impl<'a> ReadFromBuf<'a> for Joystick{
+impl<'a> ReadFromBuf<'a> for Joystick {
     type Error = JoystickParseError;
 
-    fn read_into_from_buf(&mut self, buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<(), Self::Error> {
+    fn read_into_from_buf(
+        &mut self,
+        buf: &mut util::buffer_reader::BufferReader<'a>,
+    ) -> Result<&mut Self, Self::Error> {
         self.clear_axis();
 
         for axis in buf.read_short_u8_arr()? {
@@ -363,12 +365,11 @@ impl<'a> ReadFromBuf<'a> for Joystick{
 
         buf.assert_empty()?;
 
-        Ok(())
+        Ok(self)
     }
 }
 
 impl<'a> CreateFromBuf<'a> for Joystick {
-
     fn create_from_buf(buf: &mut BufferReader<'a>) -> Result<Self, Self::Error> {
         let mut joy = Joystick::default();
 

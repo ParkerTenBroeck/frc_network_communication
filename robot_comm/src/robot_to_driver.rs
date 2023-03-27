@@ -1,4 +1,4 @@
-use std::{mem::size_of};
+use std::collections::HashMap;
 
 use util::{
     buffer_reader::{CreateFromBuf, ReadFromBuf},
@@ -11,7 +11,7 @@ use crate::common::{
     robot_voltage::RobotVoltage,
 };
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub struct RobotToDriverstationPacket {
     pub sequence: u16,
     pub tag_comm_version: u8,
@@ -21,35 +21,151 @@ pub struct RobotToDriverstationPacket {
     pub request: DriverstationRequestCode,
 }
 
-trait RobotToDriverPacketAdditions<'a>: BufferWritter<'a> {
-    const ID: u8;
+#[derive(Debug)]
+pub struct PdpPowerReport {
+    pub inner: PdpPowerReportInner<[u8; 9]>,
 }
 
+use bitfield::*;
+//MSB0 [u8]
+bitfield! { // 9 bytes
+    pub struct PdpPowerReportInner(MSB0 [u8]);
+    u32;
+    // always zero so maybe the can_id for PDP
+    // (thats also normally zero)
+    can_id, _: 7, 0; // 8 bits
+    // always 20 so maybe number of PDP ports
+    pdp_ports, _: 15, 8; // 8 bits
+    // this is close or equal to the combined amps of each channel
+    // of the PDP so its probably correct
+    current_pdp_amps, _: 27, 16; // 12 bits
+    // its close to the total times 12 so my guess is its watts
+    current_pdp_wats, _: 43, 28; // 16 bits
+    // this counts up whenever theres amps
+    // no idea what unit it is
+    // uhhhhh so this might be total A(ms)??
+    // this acumulates roughtly equal to 20*current_pdp_amps every packet
+    // and these packets are sent every ~20 ms????
+    total_unknown, _: 71, 44; // 28 bits
+}
 
-#[repr(C, packed(1))]
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
+impl<T: AsRef<[u8]>> std::fmt::Debug for PdpPowerReportInner<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PdpPowerUsageReport")
+            .field("can_id", &self.can_id())
+            .field("pdp_ports", &self.pdp_ports())
+            .field("current_pdp_amps", &self.current_pdp_amps())
+            .field("current_pdp_wats", &self.current_pdp_wats())
+            .field("total_unknown", &self.total_unknown())
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+pub struct PdpPortReport {
+    pub unknown_0: u8,
+    pub port_amp_report: PdpPortAmpReport<[u8; 21]>,
+    pub unknown_1: [u8; 3],
+}
+
+bitfield! { // 9 bytes
+    pub struct PdpPortAmpReport(MSB0 [u8]);
+    u16;
+    port_00, _: 9, 0;
+    port_01, _: 19, 10;
+    port_02, _: 29, 20;
+    port_03, _: 39, 30;
+    port_04, _: 49, 40;
+    port_05, _: 59, 50;
+    pad1, _: 63, 60;
+    port_06, _: 73, 64;
+    port_07, _: 83, 74;
+    port_08, _: 93, 84;
+    port_09, _: 103, 94;
+    port_10, _: 113, 104;
+    port_11, _: 123, 114;
+    pad2, _: 127, 124;
+    port_12, _: 137, 128;
+    port_13, _: 147, 138;
+    port_14, _: 157, 148;
+    port_15, _: 167, 158;
+}
+
+impl<T: AsRef<[u8]>> std::fmt::Debug for PdpPortAmpReport<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PdpPortAmpReport")
+            .field("port_00", &self.port_00())
+            .field("port_01", &self.port_01())
+            .field("port_02", &self.port_02())
+            .field("port_03", &self.port_03())
+            .field("port_04", &self.port_04())
+            .field("port_05", &self.port_05())
+            .field("pad1", &self.pad1())
+            .field("port_06", &self.port_06())
+            .field("port_07", &self.port_07())
+            .field("port_08", &self.port_08())
+            .field("port_09", &self.port_09())
+            .field("port_10", &self.port_10())
+            .field("pad2", &self.pad2())
+            .field("port_11", &self.port_11())
+            .field("port_12", &self.port_12())
+            .field("port_13", &self.port_13())
+            .field("port_14", &self.port_14())
+            .field("port_15", &self.port_15())
+            .finish()
+    }
+}
+
+#[repr(C)]
+#[derive(Default, Copy, Clone, PartialEq)]
 pub struct CpuUsage {
-    pub user: f32,
-    pub _unknown1: f32,
-    pub _unknown2: f32,
-    pub system: f32,
+    user: [u8; 4],
+    _unknown1: [u8; 4],
+    _unknown2: [u8; 4],
+    system: [u8; 4],
+}
+
+impl std::fmt::Debug for CpuUsage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CpuUsage")
+            .field("user", &self.get_1())
+            .field("_unknown1", &self.get_2())
+            .field("_unknown2", &self.get_3())
+            .field("system", &self.get_4())
+            .finish()
+    }
+}
+
+impl CpuUsage {
+    pub fn get_1(&self) -> f32 {
+        f32::from_be_bytes(self.user)
+    }
+    pub fn get_2(&self) -> f32 {
+        f32::from_be_bytes(self._unknown1)
+    }
+    pub fn get_3(&self) -> f32 {
+        f32::from_be_bytes(self._unknown2)
+    }
+    pub fn get_4(&self) -> f32 {
+        f32::from_be_bytes(self.system)
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct RobotToDriverRumble {
+    no_idea: u32,
+    left: u16,
+    right: u16,
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct RobotToDriverRamUsage {
-    pub bytes_used: u64,
+    pub bytes_free: u64,
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct RobotToDriverDiskUsage {
-    pub bytes_used: u64,
-}
-
-pub enum UsageReport<'a> {
-    DiskUsage(RobotToDriverDiskUsage),
-    RamUsage(RobotToDriverRamUsage),
-    CanUsage(RobotToDriverCanUsage),
-    CpuUsage(&'a [CpuUsage]),
+    pub bytes_free: u64,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
@@ -71,7 +187,10 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         buf.write_u8(self.status.to_bits())?;
         buf.write_u8(self.battery.int)?;
         buf.write_u8(self.battery.dec)?;
+        // println!("{:#?}", self.request);
         buf.write_u8(self.request.to_bits())?;
+
+        return Ok(());
 
         // if true{
         //     return Ok(());
@@ -122,98 +241,106 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
         // // buf.write_buf(&[0; 22])?;
         // // buf.write_buf(&[255, 171, 85])?;
         // buf.write_buf(&[self.packet as u8; 25])?;
-        let mut buf = buf.create_u8_size_guard()?;
-        match self.sequence & 7 {
-            0 => {
-                // ram
-                buf.write_u8(6)?;
-                // num bytes free
-                buf.write_u64((self.sequence as u64) << 22)?;
-            }
-            1 => {
-                // disk
-                buf.write_u8(4)?;
-                // num bytes free
-                buf.write_u64((self.sequence as u64) << 31)?;
-            }
-            2 => {
-                // can usage
-                buf.write_u8(0x0e)?;
+        {
+            let mut buf = buf.create_u8_size_guard()?;
+            // ram
+            buf.write_u8(6)?;
+            // num bytes free
+            buf.write_u64((self.sequence as u64) << 22)?;
+        }
 
-                // utilization % [0, 1.0]
-                buf.write_f32((self.sequence % 200) as f32 / 200.0)?;
-                // Bus Off
-                buf.write_u32(5)?;
-                // TX Full
-                buf.write_u32(10)?;
-                // Recieve
-                buf.write_u8(23)?;
-                // Transmit
-                buf.write_u8(32)?;
-            }
-            3 => {
-                // PDP LOGGG
-                buf.write_u8(0x08)?;
+        {
+            let mut buf = buf.create_u8_size_guard()?;
+            // disk
+            buf.write_u8(4)?;
+            // num bytes free
+            buf.write_u64((self.sequence as u64) << 31)?;
+        }
+        {
+            let mut buf = buf.create_u8_size_guard()?;
+            // can usage
+            buf.write_u8(0x0e)?;
 
-                // unknown (becuase I dont know :( )
-                buf.write_u8(0)?;
+            // utilization % [0, 1.0]
+            buf.write_f32((self.sequence % 200) as f32 / 200.0)?;
+            // Bus Off
+            buf.write_u32(5)?;
+            // TX Full
+            buf.write_u32(10)?;
+            // Recieve
+            buf.write_u8(23)?;
+            // Transmit
+            buf.write_u8(32)?;
+        }
+        {
+            let mut buf = buf.create_u8_size_guard()?;
+            // PDP LOGGG
+            buf.write_u8(0x08)?;
 
-                // 16 pdp values each being 10 bits each
-                // with 4 bits of padding every 8 bytes
-                let pdp = [self.sequence; 16];
-                for i in 0..2 {
-                    let mut chunck = 0u64;
-                    for val in &pdp[(i * 5)..(i * 5 + 5)] {
-                        chunck <<= 10;
-                        chunck |= (*val & 0x3FF) as u64;
-                    }
-                    chunck <<= 4;
-                    buf.write_u64(chunck)?;
-                }
+            // unknown (becuase I dont know :( )
+            buf.write_u8(0)?;
 
+            // 16 pdp values each being 10 bits each
+            // with 4 bits of padding every 8 bytes
+            let pdp = [self.sequence; 16];
+            for i in 0..2 {
                 let mut chunck = 0u64;
-                for val in &pdp[12..16] {
+                for val in &pdp[(i * 5)..(i * 5 + 5)] {
                     chunck <<= 10;
                     chunck |= (*val & 0x3FF) as u64;
                 }
-                let bytes = &chunck.to_be_bytes()[..5];
-                buf.write_buf(bytes)?;
-
-                buf.write_buf(&[255, 171, 85])?;
+                chunck <<= 4;
+                buf.write_u64(chunck)?;
             }
-            4 => {
-                buf.write_u8(0x09)?;
-                buf.write_buf(&[66; 9])?;
-                // println!("bruh 9");
-            }
-            _ => {
-                buf.write_u8(0x05)?;
 
-                let num = 2;
-                buf.write_u8(num + 5)?;
-                for _ in 0..num {
-                    buf.write_f32(11.0)?;
-                    buf.write_f32(22.0)?;
-                    buf.write_f32(33.0)?;
-                    buf.write_f32(04.0)?;
-                }
+            let mut chunck = 0u64;
+            for val in &pdp[12..16] {
+                chunck <<= 10;
+                chunck |= (*val & 0x3FF) as u64;
+            }
+            let bytes = &chunck.to_be_bytes()[..5];
+            buf.write_buf(bytes)?;
+
+            buf.write_buf(&[255, 171, 85])?;
+        }
+        {
+            buf.write_u8(0x09)?;
+            buf.write_buf(&[66; 9])?;
+            // println!("bruh 9");
+        }
+        {
+            let mut buf = buf.create_u8_size_guard()?;
+            buf.write_u8(0x05)?;
+
+            let num = 2;
+            buf.write_u8(num + 5)?;
+            for _ in 0..num {
+                buf.write_f32(11.0)?;
+                buf.write_f32(22.0)?;
+                buf.write_f32(33.0)?;
+                buf.write_f32(04.0)?;
             }
         }
+
         // self.extended.write_to_buff(buf)?;
 
         Ok(())
     }
 }
 
-impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket{
+impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket {
     type Error = RobotPacketParseError;
 
-    fn read_into_from_buf(&mut self, buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<(), Self::Error> {
-        
+    fn read_into_from_buf(
+        &mut self,
+        buf: &mut util::buffer_reader::BufferReader<'a>,
+    ) -> Result<&mut Self, Self::Error> {
         self.sequence = buf.read_u16()?;
         self.tag_comm_version = buf.read_u8()?;
-        if self.tag_comm_version != 1{
-            Err(RobotPacketParseError::RobotToDriverInvalidCommVersion(self.tag_comm_version))?
+        if self.tag_comm_version != 1 {
+            Err(RobotPacketParseError::RobotToDriverInvalidCommVersion(
+                self.tag_comm_version,
+            ))?
         }
 
         self.control_code = ControlCode::from_bits(buf.read_u8()?);
@@ -221,8 +348,10 @@ impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket{
         self.battery.read_into_from_buf(buf)?;
         self.request = DriverstationRequestCode::from_bits(buf.read_u8()?);
         // std::slice::from_mut(s)
+        return Ok(self);
+        println!("battery voltage: {}", self.battery.to_f32());
 
-        while buf.has_more(){
+        while buf.has_more() {
             let mut buf = buf.sized_u8_reader()?;
             if buf.remaining_buf_len() == 0 {
                 continue;
@@ -240,33 +369,166 @@ impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket{
                 }
                 5 => {
                     let cpus = buf.read_u8()? as usize;
-                    // let buf = buf.read_amount(cpus * size_of::<CpuUsage>())?;
-                    // let slice: &[CpuUsage] = unsafe{
-                    //     std::slice::from_raw_parts(buf.as_ptr().cast(), cpus)
-                    // };
-                    // println!("CpuUsage: {slice:#?}")
-                    for i in 0..cpus {
-                        // so these should all sum together to get the total CPU% [0.0, 100.0]
-                        let robot = buf.read_f32()?;
-                        let f2 = buf.read_f32()?;
-                        let f3 = buf.read_f32()?;
-                        let system = buf.read_f32()?;
+                    let buf = buf.read_amount(cpus * size_of::<CpuUsage>())?;
+                    let slice: &[CpuUsage] =
+                        unsafe { std::slice::from_raw_parts(buf.as_ptr().cast(), cpus) };
+                    println!("CpuUsage: {slice:#?}");
+                    // for i in 0..cpus {
+                    //     // so these should all sum together to get the total CPU% [0.0, 100.0]
+                    //     let robot = buf.read_f32()?;
+                    //     let f2 = buf.read_f32()?;
+                    //     let f3 = buf.read_f32()?;
+                    //     let system = buf.read_f32()?;
 
-                        println!("cpu: {i} -> user: {robot:.2} {f2:.2} {f3:.2} system?: {system:.2} total: {}", robot + system + f2 + f3)
-                    }
+                    //     println!("cpu: {i} -> user: {robot:.2} {f2:.2} {f3:.2} system?: {system:.2} total: {}", robot + system + f2 + f3)
+                    // }
                 }
                 6 => {
                     let usage = buf.read_u64()?;
                     println!("ram usage: {}", usage)
                 }
                 8 => {
-                    let zeros = buf.read_amount(22)?;
+                    let val = buf.read_u8()?;
+
+                    let mut calculated_total = 0;
+
+                    let mut curr_thing = 0;
+                    for _ in 0..2 {
+                        let mut val = buf.read_u64()?;
+                        for _ in 0..8 {
+                            let tmp = val >> (64 - 10);
+                            print!("amp_{curr_thing}: {tmp}, ");
+                            calculated_total += tmp;
+                            val <<= 10;
+                            curr_thing += 1;
+                        }
+                    }
+                    let tmp = buf.read_u16()? as u64;
+                    let mut val = (tmp << 16) | (buf.read_u24()? as u64);
+                    val <<= 64 - 40;
+                    for _ in 0..5 {
+                        let tmp = val >> (64 - 10);
+                        print!("amp_{curr_thing}: {tmp}, ");
+                        calculated_total += tmp;
+                        val <<= 10;
+                        curr_thing += 1;
+                    }
+
                     let ff = buf.read_u8()?;
-                    let num = buf.read_u16()? as i16;
-                    println!("8 usage: {:?}, 0xff: {:02X}, num: {}", zeros, ff, num);
+                    let num = buf.read_u8()? as i16;
+                    let num2 = buf.read_u8()? as i16;
+                    println!("pdp shiz: 0xff: {:02X}, num: {}, {}", ff, num, num2);
+                    println!("calculated total amps: {}", calculated_total);
                 }
                 9 => {
-                    println!("9 usage: {:?}", buf.read_amount(buf.remaining_buf_len())?)
+                    // use modular_bitfield_msb::*;
+                    // use modular_bitfield_msb::specifiers::*;
+                    // #[bitfield(bits = 72)]
+                    // #[derive(Debug)]
+                    // pub struct PackedData {
+                    //     norm_0x00: B8,
+                    //     norm_0x20: B8,
+                    //     a1: B10,
+                    //     idk: B6,
+                    //     a2: B10,
+                    //     total_a: B30
+                    // }
+
+                    // let vals = buf.read_const_amount::<9>()?;
+                    // println!("{vals:?}");
+                    // for val in vals{
+                    //     print!("{:08b}, ", val);
+                    // }
+                    // println!("{:#?}", PackedData::from_bytes(*vals));
+                    // buf.assert_empty()?;
+
+                    let vals = buf.read_const_amount::<9>()?;
+                    // let vals = [        0,
+                    // 20,
+                    // 3,
+                    // 176,
+                    // 44,
+                    // 17,
+                    // 58,
+                    // 254,
+                    // 223,];//buf.read_const_amount::<9>()?;
+                    let data = PdpPowerReportInner(*vals);
+
+                    // println!("{data:#?}");
+                    println!("pdp shiz 2 eletric boogaloo");
+                    println!("norm 0 (pdp can id?): {}", data.can_id());
+                    println!("norm 20 (pdp # ports?): {}", data.pdp_ports());
+                    println!("current pdp amp draw?: {}", data.current_pdp_amps());
+                    println!("current pdp watt draw?: {}", data.current_pdp_wats());
+                    println!("total pdp ???(unit) draw?: {}", data.total_unknown());
+                    println!();
+                    println!(
+                        "calculated voltage: {}",
+                        data.current_pdp_wats() as f32 / data.current_pdp_amps() as f32
+                    );
+
+                    let mut map = HashMap::new();
+
+                    let mut last = 0;
+
+                    let mut bru = |len: usize, color: (u8, u8, u8)| {
+                        for i in last..(len + last) {
+                            map.insert(i, color);
+                        }
+                        last += len;
+                    };
+
+                    bru(8, (255, 0, 0));
+                    bru(8, (0, 0, 255));
+
+                    bru(12, (0, 255, 0));
+                    // bru(4, (255, 255, 255));
+                    bru(16, (0, 255, 255));
+
+                    bru(28, (255, 255, 255));
+
+                    println!("MSB 0 1 2 3 4 5 6 7");
+                    for (index, val) in vals.iter().enumerate() {
+                        let mut val = *val;
+                        print!("{:02X?}: ", index * 8);
+                        for i in 0..8 {
+                            let bit_index = i + index * 8;
+                            let bit = (val & 0b1000_0000) / 128 == 1;
+                            if let Some((r, g, b)) = map.get(&bit_index) {
+                                print!("\x1b[38;2;{r};{g};{b}m")
+                            }
+                            if bit {
+                                print!("#");
+                            } else {
+                                print!(".",);
+                            }
+                            if i != 7 {
+                                val <<= 1;
+                                print!("\x1b[0m ")
+                            } else {
+                                println!("\x1b[0m")
+                            }
+                        }
+                    }
+
+                    // println!("{:#?}", PackedData([0,0,0,0,0,0,0,1,0]));
+                    buf.assert_empty()?;
+                    // PackedData::(vals);
+
+                    //idk something to do with amps
+                    // the last 24 bit number keeps counting up and never goes down whenever
+                    // let v1 = buf.read_u8()?;
+                    // let val = buf.read_u8()?;
+                    // if val != 0x20{
+
+                    // }
+                    // // let vals = buf.read_const_amount::<4>()?;
+                    // let val_2 = buf.read_u32()?;
+                    // let a1 = (val_2 >> 4) & 0b1111111111;
+                    // let a2 = (val_2 >> 20) & 0b1111111111;
+                    // let val_fb = buf.read_u24()?;
+                    // buf.assert_empty()?;
+                    // println!("9 usage: {val}, {v1:#02X?}, a1: {a1}, a2: {a2}, val: {val_fb}, a_full: {val_2:032b}");
                 }
                 14 => {
                     // utilization % [0, 1.0]
@@ -284,15 +546,15 @@ impl<'a> ReadFromBuf<'a> for RobotToDriverstationPacket{
                 }
                 invalid => Err(RobotPacketParseError::RobotToDriverInvalidUsageTag(invalid))?,
             }
-            
         }
-        Ok(())
+        Ok(self)
     }
 }
 
 impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
-
-    fn create_from_buf(buf: &mut util::buffer_reader::BufferReader<'a>) -> Result<Self, Self::Error> {
+    fn create_from_buf(
+        buf: &mut util::buffer_reader::BufferReader<'a>,
+    ) -> Result<Self, Self::Error> {
         let base = Self {
             sequence: buf.read_u16()?,
             tag_comm_version: {
@@ -344,13 +606,20 @@ impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
                     println!("ram usage: {}", usage)
                 }
                 8 => {
-                    let zeros = buf.read_amount(22)?;
-                    let ff = buf.read_u8()?;
-                    let num = buf.read_u16()? as i16;
-                    println!("8 usage: {:?}, 0xff: {:02X}, num: {}", zeros, ff, num);
+                    let start = buf.read_u8()?;
+                    let vals = buf.read_const_amount::<21>()?;
+
+                    let other = buf.read_const_amount::<3>()?;
+                    println!("8 usage: start{start:02X?}, vals: {vals:02X?}, other: {other:02X?}");
                 }
                 9 => {
-                    println!("9 usage: {:?}", buf.read_amount(buf.remaining_buf_len())?)
+                    let v1 = buf.read_u8()?;
+                    let val = buf.read_u8()?;
+                    if val != 0x20 {}
+                    let vals = buf.read_const_amount::<5>()?;
+                    let val = buf.read_u16()?;
+                    buf.assert_empty()?;
+                    println!("9 usage: {v1:#02X?}, vals: {vals:#02X?}, val: {val}");
                 }
                 14 => {
                     // utilization % [0, 1.0]
@@ -421,3 +690,6 @@ mod tests {
         )
     }
 }
+
+pub mod reader;
+pub mod writter;

@@ -183,7 +183,51 @@ impl Socket {
         }
     }
 
-    pub fn read_into<'a, T>(&mut self, val: &'a mut T, buf: &'a mut [u8]) -> Result<Option<&'a mut T>, SocketReadError<T::Error>>
+    pub fn read_with<'a, T, E: std::fmt::Debug>(
+        &mut self,
+        buf: &'a mut [u8],
+        process: impl FnOnce(&'a [u8]) -> Result<T, E>,
+    ) -> Result<Option<T>, SocketReadError<E>> {
+        let read = match self.socket.recv_from(buf) {
+            Ok(read) => {
+                if let SendTargetAddr::LastReceved(addr) = &mut self.send_target {
+                    *addr = read.1;
+                    addr.set_port(self.send_port)
+                }
+                read.0
+            }
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::WouldBlock {
+                    // we dont treat this as a hard error just return none
+                    0
+                } else {
+                    Err(err)?
+                }
+            }
+        };
+        if read == 0 {
+            Ok(None)
+        } else {
+            let got = &buf[..read];
+            // let mut buff = BufferReader::new(got);
+
+            let rec = match process(got) {
+                Ok(ok) => Some(ok),
+                Err(err) => return Err(SocketReadError::Buffer(err)),
+            };
+
+            self.packets_received += 1;
+            self.bytes_recieved += read;
+
+            Ok(rec)
+        }
+    }
+
+    pub fn read_into<'a, T>(
+        &mut self,
+        val: &'a mut T,
+        buf: &'a mut [u8],
+    ) -> Result<Option<&'a mut T>, SocketReadError<T::Error>>
     where
         T: CreateFromBuf<'a>,
         <T as ReadFromBuf<'a>>::Error: std::error::Error + 'static,
@@ -244,6 +288,7 @@ impl Socket {
     pub fn write_raw(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let addr = self.send_target.get_addr();
         let written = self.socket.send_to(buf, addr)?;
+        // println!("{:?}", buf);
 
         if written != buf.len() {
             return Err(std::io::Error::new(

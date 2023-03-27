@@ -57,15 +57,15 @@ mycelium_bitfield::bitfield! {
     #[derive(Default, Eq, PartialEq, Hash)]
     pub struct DriverstationRequestCode<u8>{
         pub const REQUEST_TIME: bool;
-        pub const THIS_MAKES_IT_SO_YOU_CANT_ENABLE: bool;
-        const _RESERVED1 = 6;
+        pub const REQUEST_DISABLE: bool;
+        // const _RESERVED1 = 6;
         // pub const _2: bool;
-        // pub const _3: bool;
-        // pub const _4: bool;
-        // pub const _5: bool;
-        // pub const _6: bool;
-        // pub const _7: bool;
-        // pub const _8: bool;
+        pub const _3: bool;
+        pub const _4: bool;
+        pub const _5: bool;
+        pub const _6: bool;
+        pub const _7: bool;
+        pub const _8: bool;
     }
 }
 
@@ -74,12 +74,21 @@ impl DriverstationRequestCode {
         self.get(Self::REQUEST_TIME)
     }
 
+    pub fn request_disabled(&self) -> bool {
+        self.get(Self::REQUEST_DISABLE)
+    }
+
     pub fn request_whatever_makes_the_robot_not_enable(&self) -> bool {
-        self.get(Self::THIS_MAKES_IT_SO_YOU_CANT_ENABLE)
+        self.get(Self::REQUEST_DISABLE)
     }
 
     pub fn set_request_time(&mut self, request: bool) -> &mut Self {
         self.set(Self::REQUEST_TIME, request);
+        self
+    }
+
+    pub fn set_request_disable(&mut self, disable: bool) -> &mut Self {
+        self.set(Self::REQUEST_DISABLE, disable);
         self
     }
 }

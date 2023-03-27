@@ -43,14 +43,17 @@
 
 pub type Girls = Gilrs;
 
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::{
+    mem::MaybeUninit,
+    sync::{
+        atomic::{AtomicBool, AtomicU8},
+        Arc, Mutex,
+    },
+};
 
 use gilrs::Gilrs;
-use robot_comm::{
-    common::{
-        alliance_station::AllianceStation, joystick::Joystick, request_code::RobotRequestCode,
-    },
-    driverstation::RobotComm,
+use robot_comm::common::{
+    alliance_station::AllianceStation, joystick::Joystick, request_code::RobotRequestCode,
 };
 use util::robot_discovery::RobotDiscovery;
 
@@ -59,6 +62,16 @@ pub struct Driverstation {
     robot_tcp: Mutex<RobotCommTcp>,
     fms_udp: Mutex<FmsUdp>,
     fms_tcp: Mutex<FmsTcp>,
+    daemon_status: AtomicU8,
+    disconect_daemon: AtomicBool,
+}
+
+impl Driverstation {
+    fn signal_daemon_thread_stop(&self) {
+        // if self.daemon_status.fetch_sub(1, order) == 0{
+        //     self.disconect_daemon
+        // }
+    }
 }
 
 struct RobotCommUdp {}
@@ -70,17 +83,53 @@ struct FmsUdp {}
 struct FmsTcp {}
 
 pub fn get_driverstation() -> &'static Driverstation {
-    static DAEMON_STARTED: AtomicBool = AtomicBool::new(false);
     static DRIVERSTATION: Driverstation = Driverstation::new();
-
-    if !DAEMON_STARTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-        _ = std::thread::spawn(|| {
-            DRIVERSTATION.run_blocking();
-        });
-    }
-
     &DRIVERSTATION
 }
+
+// macro_rules! write_ptr {
+//     ($start:ident = $val:expr) => {
+//         $start.write($val);
+//     };
+//     ($start:ident->$next:ident $(->$remaining:ident)* = $val:expr) => {
+//         {
+//             let tmp = std::ptr::addr_of_mut!((*$start).$next);
+//             write_ptr!(tmp$(->$remaining)* = $val);
+//         }
+//     };
+// }
+
+macro_rules! ptr_field {
+    ({$start:expr}) => {
+        {$start}
+    };
+    ($start:ident) => {
+        {$start}
+    };
+    ({$start:expr}->$next:ident $(->$remaining:ident)*) => {
+        ptr_field!({std::ptr::addr_of_mut!((*$start).$next)}$(->$remaining)*)
+    };
+    ($start:ident->$next:ident $(->$remaining:ident)*) => {
+        ptr_field!({std::ptr::addr_of_mut!((*$start).$next)}$(->$remaining)*)
+    };
+}
+
+macro_rules! write_ptr {
+    ({$start:expr} = $val:expr) => {
+        $start.write($val);
+    };
+    ($start:ident = $val:expr) => {
+        $start.write($val);
+    };
+    ({$start:expr}->$next:ident $(->$remaining:ident)* = $val:expr) => {
+        write_ptr!({std::ptr::addr_of_mut!((*$start).$next)}$(->$remaining)* = $val);
+    };
+    ($start:ident->$next:ident $(->$remaining:ident)* = $val:expr) => {
+        write_ptr!({std::ptr::addr_of_mut!((*$start).$next)}$(->$remaining)* = $val);
+    };
+}
+
+const DRIVERSTATION_DEFAULT_STATE: u8 = 0;
 
 impl Driverstation {
     pub const fn new() -> Self {
@@ -89,18 +138,44 @@ impl Driverstation {
             robot_tcp: Mutex::new(RobotCommTcp {}),
             fms_udp: Mutex::new(FmsUdp {}),
             fms_tcp: Mutex::new(FmsTcp {}),
+            daemon_status: AtomicU8::new(0),
+            disconect_daemon: AtomicBool::new(false),
         }
     }
 
-    pub fn run_blocking(&self) -> ! {
-        loop {
-            self.run_blocking_inner()
-        }
-    }
+    // pub fn start_daemon(&'static self){
+    //     if self.daemon_status.swap(true, std::sync::atomic::Ordering::Acquire){
+    //         let udp_res = std::thread::Builder::new().name("DRIVERSTATION UDP SERVER".to_owned()).spawn(||{
+    //             std::env::set_var("RUST_BACKTRACE", "1");
+    //             loop {
+    //                 let res = std::panic::catch_unwind(||{
+    //                     self.run_udp_server()
+    //                 });
+    //                 // err is already handled by our panic_hook
+    //                 if let Ok(ok) = res {
+    //                     eprintln!("Error while running driverstation udp server: {:?}", ok)
+    //                 }
+    //             }
+    //         });
 
-    pub fn run_blocking_inner(&self) {
-        todo!()
-    }
+    //         let tcp_res = std::thread::spawn(||{
+    //             std::env::set_var("RUST_BACKTRACE", "1");
+    //             while {
+    //                 let res = std::panic::catch_unwind(||{
+    //                     self.run_tcp_server()
+    //                 });
+    //                 if res.is_err(){
+
+    //                 }
+    //             }{}
+    //         });
+
+    //     }
+    // }
+
+    fn run_udp_server(&self) {}
+
+    fn run_tcp_server(&self) {}
 
     pub fn connect_to(&self, robot: impl Into<RobotDiscovery>) {
         todo!()

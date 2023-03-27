@@ -17,19 +17,19 @@ impl ControlCode {
     }
 
     pub fn is_invalid(&self) -> bool {
-        self.get(Self::_RESERVED) > 0
+        self.get(Self::_RESERVED) > 0 || self.get(Self::MODE) == 3
     }
 
     pub fn is_teleop(&self) -> bool {
-        self.get(Self::MODE) == 0
+        self.get(Self::MODE) == 0 && self.is_enabled()
     }
 
     pub fn is_test(&self) -> bool {
-        self.get(Self::MODE) == 1
+        self.get(Self::MODE) == 1 && self.is_enabled()
     }
 
     pub fn is_autonomus(&self) -> bool {
-        self.get(Self::MODE) == 2
+        self.get(Self::MODE) == 2 && self.is_enabled()
     }
 
     pub fn is_estop(&self) -> bool {

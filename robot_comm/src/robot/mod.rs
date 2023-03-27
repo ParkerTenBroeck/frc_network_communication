@@ -1,7 +1,10 @@
 use std::{
     cell::UnsafeCell,
-    sync::{atomic::AtomicU32, Arc, Mutex, MutexGuard},
-    time::{Duration},
+    sync::{
+        atomic::{AtomicBool, AtomicU32},
+        Arc, Mutex, MutexGuard,
+    },
+    time::Duration,
 };
 
 use util::{buffer_writter::SliceBufferWritter, robot_voltage::RobotVoltage, socket::Socket};
@@ -27,7 +30,7 @@ pub struct DriverstationComm<const OUT_PORT: u16 = 1110, const IN_PORT: u16 = 11
     observed_status: UnsafeCell<RobotStatusCode>,
     observed_voltage: UnsafeCell<RobotVoltage>,
     request_code: UnsafeCell<DriverstationRequestCode>,
-    connected: AtomicU32,
+    connected: AtomicBool,
 }
 
 unsafe impl<const OUT_PORT: u16, const IN_PORT: u16> Sync for DriverstationComm<OUT_PORT, IN_PORT> {}
@@ -59,9 +62,10 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 // we should be getting packets ever 20 ms. if we wait any longer something will likely go wrong
                 // we wait a little longer because we actually dont do any timings here
                 // we simply reply (or try our best to) every time we get a packet
-                // socket.set_read_timout(Some(std::time::Duration::from_micros(500)));
-                socket.set_input_nonblocking(true);
+                socket.set_input_nonblocking(false);
+                socket.set_read_timout(Some(std::time::Duration::from_millis(250)));
 
+                let mut sequence: u16 = 0;
                 // let mut last_sent = Instant::now();
                 // let mut last_received = Instant::now();
                 while Arc::strong_count(&self) > 1 {
@@ -70,7 +74,6 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                     match socket.read::<DriverstationToRobotPacket>(&mut buf) {
                         Ok(Some(packet)) => {
                             use crate::common::request_code::*;
-                            // last_received = Instant::now();
 
                             let robot_send = RobotToDriverstationPacket {
                                 sequence: packet.core_data.sequence,
@@ -95,13 +98,15 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                             // send_immeditly = true;
                             // sequence = packet.core_data.packet;
 
+                            std::thread::sleep(std::time::Duration::from_millis(1));
+
                             *self.last_core_data.spin_lock().unwrap() = packet.core_data;
 
                             if packet.time_data.has_data() {
                                 self.last_time_data
                                     .spin_lock()
                                     .unwrap()
-                                    .copy_existing_from(&packet.time_data);
+                                    .update_existing_from(&packet.time_data);
 
                                 unsafe {
                                     self.request_code
@@ -112,9 +117,22 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                                 }
                             }
                             *self.last_joystick_data.spin_lock().unwrap() = packet.joystick_data;
+
+                            if sequence.wrapping_add(1) != packet.core_data.sequence {
+                                println!("\u{001B}[31m{}\u{001b}[0m", packet.core_data.sequence);
+                            }
+                            sequence = packet.core_data.sequence;
+
+                            self.connected
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
                         }
-                        Ok(None) => {}
+                        Ok(None) => {
+                            self.connected
+                                .store(false, std::sync::atomic::Ordering::Relaxed);
+                        }
                         Err(error) => {
+                            self.connected
+                                .store(false, std::sync::atomic::Ordering::Relaxed);
                             eprintln!(
                                 "Error while parsing packets: {error}\nNon fatial Continuing"
                             );
@@ -137,7 +155,7 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
             });
             if let Err(err) = res {
                 self.connected
-                    .store(0, std::sync::atomic::Ordering::Relaxed);
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
                 std::panic::resume_unwind(err)
             }
         });
@@ -145,6 +163,10 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
 
     pub fn get_last_core_data(self: &Arc<Self>) -> DriverstationToRobotCorePacketDate {
         *self.last_core_data.lock().unwrap()
+    }
+
+    pub fn is_connected(self: &Arc<Self>) -> bool {
+        self.connected.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn observe_robot_code(self: &Arc<Self>) {
@@ -155,6 +177,24 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 .unwrap_unchecked()
                 .set(RobotStatusCode::ROBOT_HAS_CODE, true);
         }
+    }
+
+    pub fn set_observe(self: &Arc<Self>, d: RobotStatusCode) {
+        unsafe {
+            *self.observed_status.get() = d;
+        }
+    }
+
+    pub fn get_observe(&self) -> RobotStatusCode {
+        unsafe { *self.observed_status.get() }
+    }
+
+    pub fn get_request(&self) -> DriverstationRequestCode {
+        unsafe { *self.request_code.get() }
+    }
+
+    pub fn get_control(&self) -> ControlCode {
+        unsafe { *self.observed_control_state.get() }
     }
 
     pub fn observe_robot_voltage(self: &Arc<Self>, robot_voltage: RobotVoltage) {
@@ -171,6 +211,16 @@ impl<const OUT_PORT: u16, const IN_PORT: u16> DriverstationComm<OUT_PORT, IN_POR
                 .unwrap_unchecked()
                 .set(DriverstationRequestCode::REQUEST_TIME, true);
         }
+    }
+
+    pub fn set_control(self: &Arc<Self>, control: ControlCode) {
+        unsafe {
+            *self.observed_control_state.get() = control;
+        }
+    }
+
+    pub fn set_request(self: &Arc<Self>, request: DriverstationRequestCode) {
+        unsafe { *self.request_code.get() = request }
     }
 
     pub fn observe_robot_enabled(self: &Arc<Self>) {

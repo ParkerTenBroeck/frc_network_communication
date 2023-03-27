@@ -5,6 +5,7 @@ use std::{
 };
 
 use util::{
+    buffer_reader::{BufferReader, ReadFromBuf},
     buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
     robot_voltage::RobotVoltage,
     socket::Socket,
@@ -16,7 +17,7 @@ use crate::{
         request_code::RobotRequestCode, roborio_status_code::RobotStatusCode, time_data::TimeData,
     },
     driver_to_robot::DriverstationToRobotPacket,
-    robot_to_driver::RobotToDriverstationPacket,
+    robot_to_driver::{reader::print_packet, RobotToDriverstationPacket},
 };
 
 pub struct RobotComm {
@@ -170,7 +171,11 @@ impl RobotComm {
                     let now = std::time::Instant::now();
 
                     let start = Instant::now();
-                    let res = socket.read_into(&mut packet, &mut buf);
+                    // let res = socket.read_into(&mut packet, &mut buf);
+                    let res = socket.read_with(&mut buf, |read| {
+                        let _ = print_packet(read); // print the packet for diagnostics
+                        packet.read_into_from_buf(&mut BufferReader::new(read))
+                    });
                     let time = start.elapsed();
 
                     if let Ok(Some(packet)) = res {
@@ -186,7 +191,7 @@ impl RobotComm {
                             // // if our stored control code hasnt changed since we last sent a packet
                             // // override it with our observed control code
                             // if _core_copy.control_code == cb1_lock.core_data.control_code{
-                            //     cb1_lock.core_data.control_code = packet.control_code;   
+                            //     cb1_lock.core_data.control_code = packet.control_code;
                             // }
                         }
 
@@ -286,11 +291,14 @@ impl RobotComm {
             .insert(index, joystick);
     }
 
-    pub fn modify_joystick(&self, index: usize, cb: impl FnOnce(&mut Option<Joystick>)){
-        cb(self.packet_data
+    pub fn modify_joystick(&self, index: usize, cb: impl FnOnce(&mut Option<Joystick>)) {
+        cb(self
+            .packet_data
             .lock()
             .unwrap()
-            .joystick_data.get_o_mut(index).unwrap())
+            .joystick_data
+            .get_o_mut(index)
+            .unwrap())
     }
 
     pub fn set_enabled(&self) {

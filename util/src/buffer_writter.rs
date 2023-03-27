@@ -159,6 +159,14 @@ pub trait BufferWritter<'a>: Sized {
         Ok(())
     }
 
+    fn write_buf_const<const SIZE: usize>(
+        &mut self,
+        data: &[u8; SIZE],
+    ) -> Result<(), BufferWritterError> {
+        *self.write_known::<SIZE>()? = *data;
+        Ok(())
+    }
+
     fn write_u8(&mut self, data: u8) -> Result<(), BufferWritterError> {
         self.write_known::<1>()?[0] = data;
         Ok(())
