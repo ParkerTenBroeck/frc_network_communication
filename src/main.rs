@@ -6,42 +6,17 @@
 // netconsole_socket.set_input_nonblocking(true);
 
 use std::{
-    borrow::Cow,
-    collections::HashMap,
-    error::Error,
-    io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, TcpListener},
-    pin::Pin,
+    net::{IpAddr, Ipv4Addr},
     sync::Arc,
 };
 
 use crate::roborio::simulate_roborio;
-use eframe::egui::{self, plot::Plot, Context};
-use gilrs::{Gilrs, Mapping};
-use net_comm::{
-    driverstation::{
-        console_message::{Ignore, SystemConsoleOutput},
-        message_handler::MessageConsole,
-    },
-    robot_to_driverstation::{error::Warnings, Message, MessageKind},
-    robot_voltage::RobotVoltage,
-};
+use eframe::egui::{self};
+use net_comm::driverstation::{console_message::Ignore, message_handler::MessageConsole};
 use robot_comm::{
-    common::{
-        joystick::{self, Joystick, NonNegU16},
-        request_code::RobotRequestCode,
-    },
-    driverstation::{self, RobotComm},
-    robot::DriverstationComm,
-    util::{
-        buffer_reader::BufferReader,
-        buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
-        robot_discovery::find_robot_ip,
-        super_small_vec::SuperSmallVec,
-    },
+    common::{joystick::NonNegU16, request_code::RobotRequestCode},
+    driverstation::RobotComm,
 };
-
-type Exit = usize;
 
 #[derive(Default)]
 struct Pov {

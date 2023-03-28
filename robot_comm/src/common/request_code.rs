@@ -1,7 +1,7 @@
 mycelium_bitfield::bitfield! {
     #[derive(Default, PartialEq, Eq, Hash)]
     pub struct RobotRequestCode<u8>{
-        pub const NORMAL: bool;
+        pub const SEND_INFO: bool;
         // pub const _2: bool;
         // pub const _3: bool;
         pub const _RESERVED_0 = 2;
@@ -16,7 +16,7 @@ mycelium_bitfield::bitfield! {
 
 impl RobotRequestCode {
     pub fn is_normal(&self) -> bool {
-        self.get(Self::NORMAL)
+        self.get(Self::SEND_INFO)
     }
 
     pub fn is_invalid(&self) -> bool {
@@ -32,7 +32,7 @@ impl RobotRequestCode {
     }
 
     pub fn set_normal(&mut self, normal: bool) -> &mut Self {
-        self.set(Self::NORMAL, normal);
+        self.set(Self::SEND_INFO, normal);
         self
     }
 

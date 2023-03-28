@@ -9,6 +9,7 @@ use super::{
 
 pub struct RobotToDriverstaionPacketWritter<'a, 'b, T: BufferWritter<'a>> {
     writter: &'b mut T,
+    last_sucsessful: usize,
     _phantom: PhantomData<&'a mut [u8]>,
 }
 
@@ -20,6 +21,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         packet.write_to_buf(writter)?;
         Ok(Self {
             writter,
+            last_sucsessful: 0,
             _phantom: PhantomData,
         })
     }
@@ -31,6 +33,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         buf.write_u16(rumble.left)?;
         buf.write_u16(rumble.right)?;
         drop(buf);
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 
@@ -41,6 +44,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         self.writter.write_u8(9)?; //size(we know ahead of time)
         self.writter.write_u8(0x04)?; //tag
         self.writter.write_u64(usage.bytes_free)?;
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 
@@ -54,6 +58,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
             buf.write_buf_const(&usage.system)?;
         }
         drop(buf);
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 
@@ -64,6 +69,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         self.writter.write_u8(9)?; //size(we know ahead of time)
         self.writter.write_u8(0x06)?; //tag
         self.writter.write_u64(usage.bytes_free)?;
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 
@@ -76,6 +82,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         self.writter.write_u8(report.unknown_0)?;
         self.writter.write_buf_const(&report.port_amp_report.0)?;
         self.writter.write_buf_const(&report.unknown_1)?;
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 
@@ -86,6 +93,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         self.writter.write_u8(10)?; //size(we know ahead of time)
         self.writter.write(0x08)?;
         self.writter.write_buf_const(&report.inner.0)?;
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 
@@ -100,6 +108,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         self.writter.write_u32(usage.tx_full)?;
         self.writter.write_u8(usage.rx)?;
         self.writter.write_u8(usage.tx)?;
+        self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)
     }
 

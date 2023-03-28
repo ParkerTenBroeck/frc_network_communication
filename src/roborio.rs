@@ -6,26 +6,18 @@ use std::{
     sync::Arc,
 };
 
-use eframe::egui::{self, RichText};
-use net_comm::{
-    driverstation,
-    robot_to_driverstation::{Message, MessageKind},
-    robot_voltage::RobotVoltage,
+use eframe::{
+    egui::{self, RichText, Slider, TextEdit, Widget},
+    epaint::mutex::MutexGuard,
 };
+use net_comm::{robot_to_driverstation::Message, robot_voltage::RobotVoltage};
 use roborio::RoborioCom;
-use robot_comm::{
-    common::{
-        control_code::{self, ControlCode},
-        request_code::{DriverstationRequestCode, RobotRequestCode},
-        roborio_status_code::RobotStatusCode,
-    },
-    robot::DriverstationComm,
-    util::{
-        buffer_reader::BufferReader,
-        buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
-        super_small_vec::SuperSmallVec,
-    },
+use robot_comm::util::{
+    buffer_reader::BufferReader,
+    buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
+    super_small_vec::SuperSmallVec,
 };
+use sysinfo::{CpuExt, SystemExt};
 
 #[derive(Debug)]
 pub enum ControllerInfo<'a> {
@@ -69,22 +61,63 @@ pub enum JoystickType {
 
 struct RioUi {
     driverstation: Arc<RoborioCom>,
-    // driverstation: Arc<DriverstationComm>,
     joystick_selected: usize,
-    battery_voltage: f32,
 }
+
 impl RioUi {
     fn new(driverstation: Arc<RoborioCom>) -> Self {
         Self {
             driverstation,
             joystick_selected: 0,
-            battery_voltage: 12.0,
+        }
+    }
+}
+
+pub fn sysinfo<T>(uh: impl FnOnce(&sysinfo::System) -> T) -> T {
+    use std::sync::RwLock;
+
+    static SYSTEM_INFO: RwLock<Option<sysinfo::System>> = RwLock::new(None);
+    let val = SYSTEM_INFO.read().unwrap();
+    match &*val {
+        Some(val) => uh(val),
+        None => {
+            drop(val);
+            *SYSTEM_INFO.write().unwrap() = Some(sysinfo::System::new_all());
+            std::thread::spawn(|| loop {
+                {
+                    if let Some(lock) = SYSTEM_INFO.write().unwrap().as_mut() {
+                        lock.refresh_cpu();
+                        lock.refresh_memory();
+                        lock.refresh_networks();
+                        lock.refresh_disks();
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            });
+            let val = SYSTEM_INFO.read().unwrap();
+            uh(val.as_ref().unwrap())
         }
     }
 }
 
 impl eframe::App for RioUi {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::TopBottomPanel::top("Bruh").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                sysinfo(|sysinfo| {
+                    ui.label(format!(
+                        "CPU: {:.2}%",
+                        sysinfo.global_cpu_info().cpu_usage()
+                    ));
+                });
+                ui.add_space(2.0);
+                // for (name, info) in self.sysinfo.networks(){
+                //     info.
+                //     ui.label(format!("Network: {:.2}rx/{:.2}tx", info.));
+                //     ui.add_space(2.0);
+                // }
+            });
+        });
         egui::CentralPanel::default().show(ctx, |ui| {
             // let status = self.driverstation.get_observed_status();
             // if self.driverstation.is_connected() {
@@ -215,21 +248,20 @@ impl eframe::App for RioUi {
 
             let control_code = self.driverstation.get_control_code();
             let request_code = self.driverstation.get_request_code();
-            
-           
+
             if control_code.is_disabled() {
                 self.driverstation.observe_robot_disabled();
-            }else if control_code.is_autonomus() {
+            } else if control_code.is_autonomus() {
                 self.driverstation.observe_robot_autonomus()
             } else if control_code.is_teleop() {
                 self.driverstation.observe_robot_teleop()
             } else if control_code.is_test() {
                 self.driverstation.observe_robot_test()
             }
-            
-            if request_code.should_restart_roborio_code(){
+
+            if request_code.should_restart_roborio_code() {
                 // self.driverstation.observe_restart_roborio_code();
-            } 
+            }
             // self.driverstation.request_disable();
             self.driverstation.observe_robot_code(true);
 
@@ -245,7 +277,6 @@ impl eframe::App for RioUi {
                     if ui.button("Reset Con").clicked() {
                         self.driverstation.reset_con();
                     }
-
 
                     if ui
                         .selectable_label(
@@ -264,15 +295,37 @@ impl eframe::App for RioUi {
                         self.driverstation.request_time()
                     }
 
-                   if ui.selectable_label(self.driverstation.is_brownout_protection(), "Brownout").clicked(){
-                        self.driverstation.observe_robot_brownout(!self.driverstation.is_brownout_protection())
-                   }
-                   if ui.selectable_label(self.driverstation.is_estopped(), "ESTOP").clicked(){
-                        self.driverstation.observe_robot_estop(!self.driverstation.is_estopped())
+                    if ui
+                        .selectable_label(self.driverstation.is_brownout_protection(), "Brownout")
+                        .clicked()
+                    {
+                        self.driverstation
+                            .observe_robot_brownout(!self.driverstation.is_brownout_protection())
+                    }
+                    if ui
+                        .selectable_label(self.driverstation.is_estopped(), "ESTOP")
+                        .clicked()
+                    {
+                        self.driverstation
+                            .observe_robot_estop(!self.driverstation.is_estopped())
                     }
 
-                    if ui.button("Crash Driverstation").clicked(){
+                    if ui.button("Crash Driverstation").clicked() {
                         self.driverstation.crash_driverstation()
+                    }
+
+                    let mut battery_val = self.driverstation.get_observed_robot_voltage().to_f32();
+
+                    if ui
+                        .add(
+                            Slider::new(&mut battery_val, 0.0..=14.0)
+                                .smart_aim(false)
+                                .text("Battery Voltage"),
+                        )
+                        .changed()
+                    {
+                        self.driverstation
+                            .observe_robot_voltage(RobotVoltage::from_f32(battery_val))
                     }
 
                     ui.label(format!(
@@ -336,6 +389,92 @@ impl eframe::App for RioUi {
                     //     driverstation
                     //         .observe_robot_brownout(!control_code.is_brown_out_protection());
                     // }
+                });
+
+                ui.vertical(|ui| {
+                    ui.collapsing("Disk Usage", |ui| {
+                        ui.label("Disk Usage: Bytes free");
+                        let mut disk = format!(
+                            "{}",
+                            self.driverstation
+                                .get_disk_usage()
+                                .map(|f| f.bytes_free)
+                                .unwrap_or(0)
+                        );
+                        let response = TextEdit::singleline(&mut disk).desired_width(150.0).ui(ui);
+                        if response.changed() {
+                            if let Ok(val) = str::parse(&disk) {
+                                self.driverstation.set_disk_usage(Some(
+                                    robot_comm::robot_to_driver::RobotToDriverDiskUsage {
+                                        bytes_free: val,
+                                    },
+                                ));
+                            }
+                        }
+                    });
+
+                    ui.collapsing("Cpu Usage", |ui| {});
+
+                    ui.collapsing("Ram Usage", |ui| {
+                        ui.label("Ram Usage: Bytes free");
+                        let mut ram = format!(
+                            "{}",
+                            self.driverstation
+                                .get_ram_usage()
+                                .map(|f| f.bytes_free)
+                                .unwrap_or(0)
+                        );
+                        let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                        if response.changed() {
+                            if let Ok(val) = str::parse(&ram) {
+                                self.driverstation.set_ram_usage(Some(
+                                    robot_comm::robot_to_driver::RobotToDriverRamUsage {
+                                        bytes_free: val,
+                                    },
+                                ));
+                            }
+                        }
+                    });
+
+                    ui.collapsing("Pdp Port Report", |ui| {
+                        // let mut ram = format!("{}", self.driverstation.get_ram_usage().map(|f|f.bytes_free).unwrap_or(0));
+                        // let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                        // if response.changed(){
+                        //     if let Ok(val) = str::parse(&ram){
+                        //             self.driverstation.set_ram_usage(Some(robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val }));
+                        //     }
+                        // }
+                    });
+
+                    ui.collapsing("Pdp Power Report", |ui| {
+                        let mut ram = format!(
+                            "{}",
+                            self.driverstation
+                                .get_ram_usage()
+                                .map(|f| f.bytes_free)
+                                .unwrap_or(0)
+                        );
+                        let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                        if response.changed() {
+                            if let Ok(val) = str::parse(&ram) {
+                                self.driverstation.set_ram_usage(Some(
+                                    robot_comm::robot_to_driver::RobotToDriverRamUsage {
+                                        bytes_free: val,
+                                    },
+                                ));
+                            }
+                        }
+                    });
+
+                    ui.collapsing("Can Usage", |ui| {
+                        // let mut ram = format!("{}", self.driverstation.get_ram_usage().map(|f|f.bytes_free).unwrap_or(0));
+                        // let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                        // if response.changed(){
+                        //     if let Ok(val) = str::parse(&ram){
+                        //             self.driverstation.set_ram_usage(Some(robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val }));
+                        //     }
+                        // }
+                    });
                 });
 
                 // let last_core = self.driverstation.get_last_core_data();
@@ -563,7 +702,7 @@ pub fn simulate_roborio() {
                         // bufw.reset();
                     };
                     // println!("{send_info}");
-                    if send_info {
+                    if true {
                         send_msg(Message {
                             kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
                                 kind: net_comm::robot_to_driverstation::VersionInfo::ImageVersion(
@@ -625,7 +764,7 @@ pub fn simulate_roborio() {
 
                     // println!("Sent Message!");
 
-                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             };
             println!("{:#?}", res());
@@ -633,7 +772,7 @@ pub fn simulate_roborio() {
     });
 
     let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(320.0, 240.0)),
+        initial_window_size: Some(egui::vec2(720.0, 480.0)),
         ..Default::default()
     };
 

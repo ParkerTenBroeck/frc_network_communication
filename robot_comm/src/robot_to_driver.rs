@@ -21,7 +21,7 @@ pub struct RobotToDriverstationPacket {
     pub request: DriverstationRequestCode,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PdpPowerReport {
     pub inner: PdpPowerReportInner<[u8; 9]>,
 }
@@ -29,6 +29,7 @@ pub struct PdpPowerReport {
 use bitfield::*;
 //MSB0 [u8]
 bitfield! { // 9 bytes
+    #[derive(Clone, Copy)]
     pub struct PdpPowerReportInner(MSB0 [u8]);
     u32;
     // always zero so maybe the can_id for PDP
@@ -61,7 +62,7 @@ impl<T: AsRef<[u8]>> std::fmt::Debug for PdpPowerReportInner<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PdpPortReport {
     pub unknown_0: u8,
     pub port_amp_report: PdpPortAmpReport<[u8; 21]>,
@@ -69,6 +70,7 @@ pub struct PdpPortReport {
 }
 
 bitfield! { // 9 bytes
+    #[derive(Clone, Copy)]
     pub struct PdpPortAmpReport(MSB0 [u8]);
     u16;
     port_00, _: 9, 0;

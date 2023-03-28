@@ -123,7 +123,6 @@ impl<'a> BufferReader<'a> {
         Ok(f32::from_bits(u32))
     }
 
-    #[must_use = "Sized Reader is never used"]
     pub fn sized_u8_reader(&mut self) -> Result<Self, BufferReaderError> {
         let size = self.read_u8()?;
         Ok(BufferReader::new(self.read_amount(size as usize)?))
