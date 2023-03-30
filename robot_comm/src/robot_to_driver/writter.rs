@@ -91,7 +91,7 @@ impl<'a, 'b, T: BufferWritter<'a>> RobotToDriverstaionPacketWritter<'a, 'b, T> {
         report: PdpPowerReport,
     ) -> Result<&mut Self, BufferWritterError> {
         self.writter.write_u8(10)?; //size(we know ahead of time)
-        self.writter.write(0x08)?;
+        self.writter.write(0x09)?;
         self.writter.write_buf_const(&report.inner.0)?;
         self.last_sucsessful = self.writter.curr_buf_len();
         Ok(self)

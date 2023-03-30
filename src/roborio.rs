@@ -7,7 +7,7 @@ use std::{
 };
 
 use eframe::{
-    egui::{self, RichText, Slider, TextEdit, Widget},
+    egui::{self, Margin, RichText, Slider, TextEdit, Widget},
     epaint::mutex::MutexGuard,
 };
 use net_comm::{robot_to_driverstation::Message, robot_voltage::RobotVoltage};
@@ -119,133 +119,6 @@ impl eframe::App for RioUi {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            // let status = self.driverstation.get_observed_status();
-            // if self.driverstation.is_connected() {
-            //     if status.has_robot_code() {
-            //         ui.label(format!(
-            //             "Has Robot Code ip: {:?}",
-            //             self.driverstation.get_robot_ip()
-            //         ));
-            //     } else {
-            //         ui.label("No Robot Code");
-            //     }
-            // } else {
-            //     ui.label("No robot communication");
-            // }
-
-            // let control = self.driverstation.get_observed_control();
-
-            // if control.is_brown_out_protection() {
-            //     ui.label("BROWN OUT PROTECTION");
-            // }
-
-            // if control.is_estop() {
-            //     ui.label("ESTOP");
-            // }
-
-            // if control.is_driverstation_attached() {
-            //     ui.label("NO IDEA");
-            // }
-
-            // ui.input(|i| {
-            //     let speed =
-            //         i.key_down(egui::Key::W) as i8 * -10 + i.key_down(egui::Key::S) as i8 * 10;
-            //     let turn =
-            //         i.key_down(egui::Key::A) as i8 * -10 + i.key_down(egui::Key::D) as i8 * 10;
-
-            //     self.driverstation.modify_joystick(0, |joy| {
-            //         if let Some(joy) = joy {
-            //             if joy.get_axis(1).is_none() {
-            //                 joy.set_axis(1, 0).unwrap();
-            //             }
-            //             if joy.get_axis(4).is_none() {
-            //                 joy.set_axis(4, 0).unwrap();
-            //             }
-            //             joy.set_axis(1, joy.get_axis(1).unwrap().saturating_add(speed))
-            //                 .unwrap();
-            //             joy.set_axis(4, joy.get_axis(4).unwrap().saturating_add(turn))
-            //                 .unwrap();
-            //             if speed == 0 {
-            //                 joy.set_axis(1, 0).unwrap();
-            //             }
-            //             if turn == 0 {
-            //                 joy.set_axis(4, 0).unwrap();
-            //             }
-            //         } else {
-            //             *joy = Some(Default::default());
-            //         }
-            //         // println!("{:#?}", joy);
-            //     });
-            // });
-
-            // ui.horizontal(|ui| {
-            //     ui.vertical(|ui| {
-            //         if ui
-            //             .toggle_value(&mut control.is_teleop(), "Teleop")
-            //             .clicked()
-            //         {
-            //             self.driverstation.set_disabled();
-            //             self.driverstation.set_teleop();
-            //         }
-            //         if ui
-            //             .toggle_value(&mut control.is_autonomus(), "Auton")
-            //             .clicked()
-            //         {
-            //             self.driverstation.set_disabled();
-            //             self.driverstation.set_autonomus();
-            //         }
-            //         if ui.toggle_value(&mut false, "Practis").clicked() {
-            //             self.driverstation.set_disabled();
-            //             //TODO: add practis mode support
-            //         }
-            //         if ui.toggle_value(&mut control.is_test(), "Test").clicked() {
-            //             self.driverstation.set_disabled();
-            //             self.driverstation.set_test()
-            //         }
-            //     });
-
-            //     ui.vertical(|ui| {
-            //         ui.label(format!("{:.2}", self.driverstation.get_observed_voltage()));
-
-            //         ui.horizontal(|ui| {
-            //             let en_res = ui.toggle_value(&mut control.is_enabled(), "Enable");
-
-            //             let dis_res = ui.toggle_value(&mut !control.is_enabled(), "Dissable");
-
-            //             if en_res.clicked() {
-            //                 self.driverstation.set_enabled();
-            //             }
-            //             if dis_res.clicked() {
-            //                 self.driverstation.set_disabled();
-            //             }
-            //         });
-            //     });
-            // });
-
-            // if ui.button("Reconnect").clicked() {
-            //     self.driverstation.reconnect()
-            // }
-
-            // {
-            //     let driverstation = &self.driverstation;
-
-            //     let control_code = driverstation.get_last_core_data().control_code;
-
-            //     if control_code.is_enabled(){
-            //         driverstation.observe_robot_enabled();
-            //     }else{
-            //         driverstation.observe_robot_disabled();
-            //     }
-
-            //     if control_code.is_teleop(){
-            //         driverstation.observe_robot_teleop()
-            //     }else if control_code.is_autonomus(){
-            //         driverstation.observe_robot_autonomus()
-            //     }else if control_code.is_test(){
-            //         driverstation.observe_robot_test()
-            //     }
-            // }
-
             let control_code = self.driverstation.get_control_code();
             let request_code = self.driverstation.get_request_code();
 
@@ -263,7 +136,8 @@ impl eframe::App for RioUi {
                 // self.driverstation.observe_restart_roborio_code();
             }
             // self.driverstation.request_disable();
-            self.driverstation.observe_robot_code(true);
+            self.driverstation
+                .observe_robot_code(!request_code.should_restart_roborio_code());
 
             // // Plot::new("Bruh").view_aspect(2.0).show(ui, |plot_ui| {});
             ui.horizontal(|ui| {
@@ -306,8 +180,8 @@ impl eframe::App for RioUi {
                         .selectable_label(self.driverstation.is_estopped(), "ESTOP")
                         .clicked()
                     {
-                        self.driverstation
-                            .observe_robot_estop(!self.driverstation.is_estopped())
+                        // self.driverstation
+                        //     .observe_robot_estop(!self.driverstation.is_estopped())
                     }
 
                     if ui.button("Crash Driverstation").clicked() {
@@ -327,27 +201,61 @@ impl eframe::App for RioUi {
                         self.driverstation
                             .observe_robot_voltage(RobotVoltage::from_f32(battery_val))
                     }
+                    egui::Frame {
+                        stroke: ui.style().visuals.window_stroke,
+                        inner_margin: Margin::same(2.0),
+                        ..Default::default()
+                    }
+                    .show(ui, |ui| {
+                        egui::Grid::new("my_grid")
+                            .num_columns(2)
+                            .spacing([40.0, 4.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("Packets Dropped");
+                                ui.label(self.driverstation.get_udp_packets_dropped().to_string());
+                                ui.end_row();
 
-                    ui.label(format!(
-                        "Packets Dropped: {}",
-                        self.driverstation.get_udp_packets_dropped()
-                    ));
-                    ui.label(format!(
-                        "Packets Sent: {}",
-                        self.driverstation.get_udp_packets_sent()
-                    ));
-                    ui.label(format!(
-                        "Bytes Send: {}",
-                        self.driverstation.get_udp_bytes_sent()
-                    ));
-                    ui.label(format!(
-                        "Packets Received: {}",
-                        self.driverstation.get_udp_packets_received()
-                    ));
-                    ui.label(format!(
-                        "Bytes Received: {}",
-                        self.driverstation.get_udp_bytes_received()
-                    ));
+                                ui.label("Packets Send");
+                                ui.label(self.driverstation.get_udp_packets_sent().to_string());
+                                ui.end_row();
+
+                                ui.label("Bytes Sent");
+                                ui.label(self.driverstation.get_udp_bytes_sent().to_string());
+                                ui.end_row();
+
+                                ui.label("Packets Received");
+                                ui.label(self.driverstation.get_udp_packets_received().to_string());
+                                ui.end_row();
+
+                                ui.label("Bytes Received");
+                                ui.label(self.driverstation.get_udp_bytes_received().to_string());
+                                ui.end_row();
+                            });
+                    });
+                    // ui.separator();
+                    // ui.separator();
+
+                    // ui.label(format!(
+                    //     "Packets Dropped: {}",
+                    //     self.driverstation.get_udp_packets_dropped()
+                    // ));
+                    // ui.label(format!(
+                    //     "Packets Sent: {}",
+                    //     self.driverstation.get_udp_packets_sent()
+                    // ));
+                    // ui.label(format!(
+                    //     "Bytes Send: {}",
+                    //     self.driverstation.get_udp_bytes_sent()
+                    // ));
+                    // ui.label(format!(
+                    //     "Packets Received: {}",
+                    //     self.driverstation.get_udp_packets_received()
+                    // ));
+                    // ui.label(format!(
+                    //     "Bytes Received: {}",
+                    //     self.driverstation.get_udp_bytes_received()
+                    // ));
 
                     ui.add_space(1.0);
 
@@ -390,6 +298,8 @@ impl eframe::App for RioUi {
                     //         .observe_robot_brownout(!control_code.is_brown_out_protection());
                     // }
                 });
+
+                ui.separator();
 
                 ui.vertical(|ui| {
                     ui.collapsing("Disk Usage", |ui| {
@@ -476,6 +386,8 @@ impl eframe::App for RioUi {
                         // }
                     });
                 });
+
+                ui.separator();
 
                 // let last_core = self.driverstation.get_last_core_data();
                 // ui.vertical(|ui| {
@@ -596,178 +508,185 @@ impl eframe::App for RioUi {
     }
 }
 
+fn idk(){
+    let mut buf = [0u8; 4096];
+    let listener = TcpListener::bind("0.0.0.0:1740").unwrap();
+
+    let mut message_num = 0;
+    for stream in listener.incoming() {
+        let mut stream = stream.unwrap();
+        println!("Connection established!");
+        // stream.set_read_timeout(Some(std::time::Duration::from_micros(0))).unwrap();
+
+        let mut res = || -> Result<(), Box<dyn Error>> {
+            loop {
+                let mut send_info = false;
+
+                stream.set_nonblocking(true).unwrap();
+                while let Ok(size) = stream.peek(&mut buf) {
+                    if size < 2 {
+                        break;
+                    }
+                    let packet_size = BufferReader::new(&buf).read_u16()? as usize;
+                    if size - 2 < packet_size {
+                        break;
+                    }
+                    stream.read_exact(&mut buf[0..packet_size + 2])?;
+                    if packet_size == 0 {
+                        send_info = true;
+                        break;
+                    }
+
+                    let mut buf = BufferReader::new(&buf);
+
+                    let mut buf = buf.read_known_length_u16().unwrap();
+                    match buf.read_u8()? {
+                        0x02 => {
+                            let index = buf.read_u8()?;
+                            let is_xbox = buf.read_u8()? == 1;
+
+                            // let num_axis;
+                            let controller = if buf.read_u8()? == 1 {
+                                ControllerInfo::Some {
+                                    id: index,
+                                    is_xbox,
+                                    js_type: JoystickType::HIDGamepad,
+                                    name: Cow::Borrowed(buf.read_short_str()?),
+                                    axis: {
+                                        let mut axis = SuperSmallVec::new();
+                                        for _ in 0..buf.read_u8()? {
+                                            axis.push(buf.read_u8()?)
+                                        }
+                                        axis
+                                    },
+                                    buttons: buf.read_u8()?,
+                                    povs: buf.read_u8()?,
+                                }
+                            } else {
+                                ControllerInfo::None { id: index }
+                            };
+                            println!("{controller:#?}");
+                        }
+                        0x07 => {
+                            // match info
+                            let comp = buf.read_short_str()?;
+                            // 0 None, 1 Practis, 2 quals, 3 elims
+                            let match_style = buf.read_u8()?;
+                            let match_number = buf.read_u16()?;
+                            let replay_number = buf.read_u8()?;
+                            println!("0x07 => Comp: {comp}, match: {match_style}, match#: {match_number}, replay#: {replay_number}");
+                        }
+                        0x0E => {
+                            //Game Data
+                            println!(
+                                "GameData => {:?}",
+                                buf.read_str(buf.remaining_buf_len())?
+                            );
+                        }
+                        val => {
+                            println!("Unknown data tag: {val:02X}")
+                        }
+                    }
+                }
+                let mut bufw = SliceBufferWritter::new(&mut buf);
+
+                stream.set_nonblocking(false).unwrap();
+                let mut send_msg = |mut msg: Message| {
+                    let mut bufws = bufw.create_u16_size_guard().unwrap();
+                    msg.set_msg_num(message_num);
+                    message_num = message_num.wrapping_add(1);
+                    msg.set_ms(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u32,
+                    );
+                    msg.write_to_buf(&mut bufws).unwrap();
+                    // bufws.write((8 -(bufws.curr_buf_len() + 2) % 8) %8).unwrap();
+                    drop(bufws);
+
+                    // stream.write_all(bufw.curr_buf()).unwrap();
+                    // bufw.reset();
+                };
+                // println!("{send_info}");
+                if true {
+                    send_msg(Message {
+                        kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
+                            kind: net_comm::robot_to_driverstation::VersionInfo::ImageVersion(
+                                "Holy Cow It's Rust".into(),
+                            ),
+                        },
+                    });
+
+                    send_msg(Message {
+                        kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
+                            kind: net_comm::robot_to_driverstation::VersionInfo::LibCVersion(
+                                "Lib :3 Rust".into(),
+                            ),
+                        },
+                    });
+
+                    send_msg(Message {
+                        kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
+                            kind: net_comm::robot_to_driverstation::VersionInfo::Empty,
+                        },
+                    });
+
+                    // send_msg(Message {
+                    //     kind: net_comm::robot_to_driverstation::MessageKind::UnderlineAnd5VDisable {
+                    //         disable_5v: 123,
+                    //         second_top_signal: 2,
+                    //         third_top_signal: 2,
+                    //         top_signal: 2,
+                    //     },
+                    // });
+
+                    // send_msg(Message {
+                    //     kind: net_comm::robot_to_driverstation::MessageKind::DisableFaults {
+                    //         comms: 69,
+                    //         fault_12v: 55,
+                    //     },
+                    // });
+
+                    // send_msg(Message {
+                    //     kind: MessageKind::RailFaults {
+                    //         short_3_3v: 12,
+                    //         short_5v: 5,
+                    //         short_6v: 6,
+                    //     },
+                    // })
+                }
+                // for _ in 0..20{
+
+                // send_msg(Message::info("Hello!"));
+                //}
+                // send_msg(Message::warn(
+                //     "abc",
+                //     Warnings::Unknown(0x12345678),
+                //         "defg", "hijklmnop"
+                // ));
+                // send_msg(Message::error("This is a Error :0", Errors::Error, "Bruh", ""));
+
+                stream.write_all(bufw.curr_buf()).unwrap();
+
+                // println!("Sent Message!");
+
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        println!("{:#?}", res());
+    }
+}
+
 pub fn simulate_roborio() {
     // let com = DriverstationComm::start_comm();
     let com = Arc::new(roborio::RoborioCom::default());
     roborio::RoborioCom::start_daemon(com.clone());
 
-    std::thread::spawn(move || {
-        let mut buf = [0u8; 4096];
-        let listener = TcpListener::bind("0.0.0.0:1740").unwrap();
-
-        let mut message_num = 0;
-        for stream in listener.incoming() {
-            let mut stream = stream.unwrap();
-            println!("Connection established!");
-            // stream.set_read_timeout(Some(std::time::Duration::from_micros(0))).unwrap();
-
-            let mut res = || -> Result<(), Box<dyn Error>> {
-                loop {
-                    let mut send_info = false;
-
-                    stream.set_nonblocking(true).unwrap();
-                    while let Ok(size) = stream.peek(&mut buf) {
-                        if size < 2 {
-                            break;
-                        }
-                        let packet_size = BufferReader::new(&buf).read_u16()? as usize;
-                        if size - 2 < packet_size {
-                            break;
-                        }
-                        stream.read_exact(&mut buf[0..packet_size + 2])?;
-                        if packet_size == 0 {
-                            send_info = true;
-                            break;
-                        }
-
-                        let mut buf = BufferReader::new(&buf);
-
-                        let mut buf = buf.read_known_length_u16().unwrap();
-                        match buf.read_u8()? {
-                            0x02 => {
-                                let index = buf.read_u8()?;
-                                let is_xbox = buf.read_u8()? == 1;
-
-                                // let num_axis;
-                                let controller = if buf.read_u8()? == 1 {
-                                    ControllerInfo::Some {
-                                        id: index,
-                                        is_xbox,
-                                        js_type: JoystickType::HIDGamepad,
-                                        name: Cow::Borrowed(buf.read_short_str()?),
-                                        axis: {
-                                            let mut axis = SuperSmallVec::new();
-                                            for _ in 0..buf.read_u8()? {
-                                                axis.push(buf.read_u8()?)
-                                            }
-                                            axis
-                                        },
-                                        buttons: buf.read_u8()?,
-                                        povs: buf.read_u8()?,
-                                    }
-                                } else {
-                                    ControllerInfo::None { id: index }
-                                };
-                                println!("{controller:#?}");
-                            }
-                            0x07 => {
-                                // match info
-                                let comp = buf.read_short_str()?;
-                                // 0 None, 1 Practis, 2 quals, 3 elims
-                                let match_style = buf.read_u8()?;
-                                let match_number = buf.read_u16()?;
-                                let replay_number = buf.read_u8()?;
-                                println!("0x07 => Comp: {comp}, match: {match_style}, match#: {match_number}, replay#: {replay_number}");
-                            }
-                            0x0E => {
-                                //Game Data
-                                println!(
-                                    "GameData => {:?}",
-                                    buf.read_str(buf.remaining_buf_len())?
-                                );
-                            }
-                            val => {
-                                println!("Unknown data tag: {val:02X}")
-                            }
-                        }
-                    }
-                    let mut bufw = SliceBufferWritter::new(&mut buf);
-
-                    stream.set_nonblocking(false).unwrap();
-                    let mut send_msg = |mut msg: Message| {
-                        let mut bufws = bufw.create_u16_size_guard().unwrap();
-                        msg.set_msg_num(message_num);
-                        message_num = message_num.wrapping_add(1);
-                        msg.set_ms(
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as u32,
-                        );
-                        msg.write_to_buf(&mut bufws).unwrap();
-                        // bufws.write((8 -(bufws.curr_buf_len() + 2) % 8) %8).unwrap();
-                        drop(bufws);
-
-                        // stream.write_all(bufw.curr_buf()).unwrap();
-                        // bufw.reset();
-                    };
-                    // println!("{send_info}");
-                    if true {
-                        send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-                                kind: net_comm::robot_to_driverstation::VersionInfo::ImageVersion(
-                                    "Holy Cow It's Rust".into(),
-                                ),
-                            },
-                        });
-
-                        send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-                                kind: net_comm::robot_to_driverstation::VersionInfo::LibCVersion(
-                                    "Lib :3 Rust".into(),
-                                ),
-                            },
-                        });
-
-                        send_msg(Message {
-                            kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-                                kind: net_comm::robot_to_driverstation::VersionInfo::Empty,
-                            },
-                        });
-
-                        // send_msg(Message {
-                        //     kind: net_comm::robot_to_driverstation::MessageKind::UnderlineAnd5VDisable {
-                        //         disable_5v: 123,
-                        //         second_top_signal: 2,
-                        //         third_top_signal: 2,
-                        //         top_signal: 2,
-                        //     },
-                        // });
-
-                        // send_msg(Message {
-                        //     kind: net_comm::robot_to_driverstation::MessageKind::DisableFaults {
-                        //         comms: 69,
-                        //         fault_12v: 55,
-                        //     },
-                        // });
-
-                        // send_msg(Message {
-                        //     kind: MessageKind::RailFaults {
-                        //         short_3_3v: 12,
-                        //         short_5v: 5,
-                        //         short_6v: 6,
-                        //     },
-                        // })
-                    }
-                    // for _ in 0..20{
-
-                    // send_msg(Message::info("Hello!"));
-                    //}
-                    // send_msg(Message::warn(
-                    //     "abc",
-                    //     Warnings::Unknown(0x12345678),
-                    //         "defg", "hijklmnop"
-                    // ));
-                    // send_msg(Message::error("This is a Error :0", Errors::Error, "Bruh", ""));
-
-                    stream.write_all(bufw.curr_buf()).unwrap();
-
-                    // println!("Sent Message!");
-
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-            };
-            println!("{:#?}", res());
+    std::thread::spawn(||{
+        loop{
+            let res = std::panic::catch_unwind(idk);
+            println!("{:#?}", res);
         }
     });
 

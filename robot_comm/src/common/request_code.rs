@@ -1,12 +1,19 @@
 mycelium_bitfield::bitfield! {
     #[derive(Default, PartialEq, Eq, Hash)]
     pub struct RobotRequestCode<u8>{
-        pub const SEND_INFO: bool;
+        // send library and rio version
+        pub const REQUEST_TCP_LIB_INFO: bool;
         // pub const _2: bool;
-        // pub const _3: bool;
-        pub const _RESERVED_0 = 2;
-        pub const RESTART_ROBORIO: bool;
+        pub const _RESERVED_0 = 1;
+
+        // both these should reset the estop flag
         pub const RESTART_ROBORIO_CODE: bool;
+        pub const RESTART_ROBORIO: bool;
+        // This may possibly be something very different
+        // it will flicker ocasionally it likely means something else. maybe request response?
+        pub const REQUEST_NORMAL: bool;
+        /// Setthing this to anything other than 0 makes it so the connection breaks
+        /// but the estop flag will be cleared
         pub const _RESERVED_1 = 3;
         // pub const _6: bool;
         // pub const _7: bool;
@@ -16,7 +23,7 @@ mycelium_bitfield::bitfield! {
 
 impl RobotRequestCode {
     pub fn is_normal(&self) -> bool {
-        self.get(Self::SEND_INFO)
+        self.get(Self::REQUEST_TCP_LIB_INFO)
     }
 
     pub fn is_invalid(&self) -> bool {
@@ -32,7 +39,7 @@ impl RobotRequestCode {
     }
 
     pub fn set_normal(&mut self, normal: bool) -> &mut Self {
-        self.set(Self::SEND_INFO, normal);
+        self.set(Self::REQUEST_TCP_LIB_INFO, normal);
         self
     }
 

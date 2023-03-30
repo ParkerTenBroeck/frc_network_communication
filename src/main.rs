@@ -140,19 +140,24 @@ impl Pov {
 //     }
 // }
 
+pub mod bruh;
 pub mod controllers;
 pub mod roborio;
 
 fn main() {
-    simulate_roborio()
+    // bruh::run_bruh()
+    // simulate_roborio()
+    run_driverstation()
 }
 
 pub fn run_driverstation() {
     // listener.
     // simulate_roborio();
 
-    // let ipaddr = find_robot_ip(1114).expect("Failed to find roborio");
-    let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
+    // let ipaddr =
+        // robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
+    let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    // let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
     println!("FOUND ROBORIO: {:?}", ipaddr);
 
     let driverstation = RobotComm::new(Some(ipaddr));
@@ -202,12 +207,26 @@ impl eframe::App for MyApp {
                 ui.label("BROWN OUT PROTECTION");
             }
 
-            if control.is_estop() {
-                ui.label("ESTOP");
+            // if control.is_estop() {
+            //     ui.label("ESTOP");
+            // }
+
+            if ui.selectable_label(control.is_estop(), "ESTOP").clicked() {
+                self.driverstation.set_estop(!control.is_estop());
+                // control.set_estop(!control.is_estop());
             }
 
             if control.is_driverstation_attached() {
                 ui.label("NO IDEA");
+            }
+            if ui.button("restart code").clicked() {
+                self.driverstation
+                    .set_request_code(*RobotRequestCode::new().set_restart_roborio_code(true))
+            }
+
+            if ui.button("restart rio").clicked() {
+                self.driverstation
+                    .set_request_code(*RobotRequestCode::new().set_restart_roborio(true))
             }
 
             ui.input(|i| {

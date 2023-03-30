@@ -588,7 +588,7 @@ impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
                 }
                 4 => {
                     let usage = buf.read_u64()?;
-                    println!("disk usage: {usage}")
+                    // println!("disk usage: {usage}")
                 }
                 5 => {
                     let cpus = buf.read_u8()?;
@@ -599,19 +599,19 @@ impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
                         let f3 = buf.read_f32()?;
                         let system = buf.read_f32()?;
 
-                        println!("cpu: {i} -> user: {robot:.2} {f2:.2} {f3:.2} system?: {system:.2} total: {}", robot + system + f2 + f3)
+                        // println!("cpu: {i} -> user: {robot:.2} {f2:.2} {f3:.2} system?: {system:.2} total: {}", robot + system + f2 + f3)
                     }
                 }
                 6 => {
                     let usage = buf.read_u64()?;
-                    println!("ram usage: {}", usage)
+                    // println!("ram usage: {}", usage)
                 }
                 8 => {
                     let start = buf.read_u8()?;
                     let vals = buf.read_const_amount::<21>()?;
 
                     let other = buf.read_const_amount::<3>()?;
-                    println!("8 usage: start{start:02X?}, vals: {vals:02X?}, other: {other:02X?}");
+                    // println!("8 usage: start{start:02X?}, vals: {vals:02X?}, other: {other:02X?}");
                 }
                 9 => {
                     let v1 = buf.read_u8()?;
@@ -620,7 +620,7 @@ impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
                     let vals = buf.read_const_amount::<5>()?;
                     let val = buf.read_u16()?;
                     buf.assert_empty()?;
-                    println!("9 usage: {v1:#02X?}, vals: {vals:#02X?}, val: {val}");
+                    // println!("9 usage: {v1:#02X?}, vals: {vals:#02X?}, val: {val}");
                 }
                 14 => {
                     // utilization % [0, 1.0]
@@ -634,7 +634,7 @@ impl<'a> CreateFromBuf<'a> for RobotToDriverstationPacket {
                     // Transmit
                     let transmit = buf.read_u8()?;
 
-                    println!("uti %{utilization:.2}, bus_off: {bus_off}, tx_full: {tx_full}, rx: {recieve}, ts: {transmit}");
+                    // println!("uti %{utilization:.2}, bus_off: {bus_off}, tx_full: {tx_full}, rx: {recieve}, ts: {transmit}");
                 }
                 invalid => Err(RobotPacketParseError::RobotToDriverInvalidUsageTag(invalid))?,
             }

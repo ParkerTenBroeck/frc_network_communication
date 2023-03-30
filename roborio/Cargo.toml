@@ -11,5 +11,6 @@ robot_comm = { path = "../robot_comm" }
 net_comm = { path = "../net_comm" }
 rclite = "*"
 spin = "*"
+atomic = "*"
 
 [features]

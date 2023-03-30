@@ -133,6 +133,9 @@ impl RobotComm {
             // write our packet to the buffer
             let mut writter = SliceBufferWritter::new(&mut buf);
             let packet_sent_sqeu = cb1_lock.core_data.sequence;
+            // cb1_lock.core_data.request_code = RobotRequestCode::from_bits(0b00010000);
+            // cb1_lock.core_data.request_code.set_restart_roborio_code(false);
+            // cb1_lock.core_data.request_code.set_restart_roborio(false);
             let res = cb1_lock.write_to_buf(&mut writter);
 
             // copy our sent core data out
@@ -173,7 +176,7 @@ impl RobotComm {
                     let start = Instant::now();
                     // let res = socket.read_into(&mut packet, &mut buf);
                     let res = socket.read_with(&mut buf, |read| {
-                        let _ = print_packet(read); // print the packet for diagnostics
+                        // let _ = print_packet(read); // print the packet for diagnostics
                         packet.read_into_from_buf(&mut BufferReader::new(read))
                     });
                     let time = start.elapsed();
