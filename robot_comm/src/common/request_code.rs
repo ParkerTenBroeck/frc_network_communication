@@ -22,8 +22,13 @@ mycelium_bitfield::bitfield! {
 }
 
 impl RobotRequestCode {
-    pub fn is_normal(&self) -> bool {
+    pub fn is_requesting_lib_info(&self) -> bool {
         self.get(Self::REQUEST_TCP_LIB_INFO)
+    }
+
+    pub fn set_request_lib(&mut self, val: bool) -> &mut Self {
+        self.set(Self::REQUEST_TCP_LIB_INFO, val);
+        self
     }
 
     pub fn is_invalid(&self) -> bool {
@@ -36,11 +41,6 @@ impl RobotRequestCode {
 
     pub fn should_restart_roborio_code(&self) -> bool {
         self.get(Self::RESTART_ROBORIO_CODE)
-    }
-
-    pub fn set_normal(&mut self, normal: bool) -> &mut Self {
-        self.set(Self::REQUEST_TCP_LIB_INFO, normal);
-        self
     }
 
     pub fn set_restart_roborio(&mut self, restart_roborio: bool) -> &mut Self {

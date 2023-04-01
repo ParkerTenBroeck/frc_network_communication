@@ -71,6 +71,88 @@ impl RioUi {
             joystick_selected: 0,
         }
     }
+
+    fn show_tags(&self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            ui.collapsing("Disk Usage", |ui| {
+                ui.label("Disk Usage: Bytes free");
+                let mut disk = format!(
+                    "{}",
+                    self.driverstation
+                        .get_disk_usage()
+                        .map(|f| f.bytes_free)
+                        .unwrap_or(0)
+                );
+                let response = TextEdit::singleline(&mut disk).desired_width(150.0).ui(ui);
+                if response.changed() {
+                    if let Ok(val) = str::parse(&disk) {
+                        self.driverstation.set_disk_usage(Some(
+                            robot_comm::robot_to_driver::RobotToDriverDiskUsage { bytes_free: val },
+                        ));
+                    }
+                }
+            });
+
+            ui.collapsing("Cpu Usage", |ui| {});
+
+            ui.collapsing("Ram Usage", |ui| {
+                ui.label("Ram Usage: Bytes free");
+                let mut ram = format!(
+                    "{}",
+                    self.driverstation
+                        .get_ram_usage()
+                        .map(|f| f.bytes_free)
+                        .unwrap_or(0)
+                );
+                let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                if response.changed() {
+                    if let Ok(val) = str::parse(&ram) {
+                        self.driverstation.set_ram_usage(Some(
+                            robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val },
+                        ));
+                    }
+                }
+            });
+
+            ui.collapsing("Pdp Port Report", |ui| {
+                // let mut ram = format!("{}", self.driverstation.get_ram_usage().map(|f|f.bytes_free).unwrap_or(0));
+                // let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                // if response.changed(){
+                //     if let Ok(val) = str::parse(&ram){
+                //             self.driverstation.set_ram_usage(Some(robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val }));
+                //     }
+                // }
+            });
+
+            ui.collapsing("Pdp Power Report", |ui| {
+                let mut ram = format!(
+                    "{}",
+                    self.driverstation
+                        .get_ram_usage()
+                        .map(|f| f.bytes_free)
+                        .unwrap_or(0)
+                );
+                let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                if response.changed() {
+                    if let Ok(val) = str::parse(&ram) {
+                        self.driverstation.set_ram_usage(Some(
+                            robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val },
+                        ));
+                    }
+                }
+            });
+
+            ui.collapsing("Can Usage", |ui| {
+                // let mut ram = format!("{}", self.driverstation.get_ram_usage().map(|f|f.bytes_free).unwrap_or(0));
+                // let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
+                // if response.changed(){
+                //     if let Ok(val) = str::parse(&ram){
+                //             self.driverstation.set_ram_usage(Some(robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val }));
+                //     }
+                // }
+            });
+        });
+    }
 }
 
 pub fn sysinfo<T>(uh: impl FnOnce(&sysinfo::System) -> T) -> T {
@@ -109,6 +191,7 @@ impl eframe::App for RioUi {
                         "CPU: {:.2}%",
                         sysinfo.global_cpu_info().cpu_usage()
                     ));
+                    // ui.label(format!())
                 });
                 ui.add_space(2.0);
                 // for (name, info) in self.sysinfo.networks(){
@@ -149,7 +232,7 @@ impl eframe::App for RioUi {
                     });
 
                     if ui.button("Reset Con").clicked() {
-                        self.driverstation.reset_con();
+                        self.driverstation.reset_all_values();
                     }
 
                     if ui
@@ -301,92 +384,7 @@ impl eframe::App for RioUi {
 
                 ui.separator();
 
-                ui.vertical(|ui| {
-                    ui.collapsing("Disk Usage", |ui| {
-                        ui.label("Disk Usage: Bytes free");
-                        let mut disk = format!(
-                            "{}",
-                            self.driverstation
-                                .get_disk_usage()
-                                .map(|f| f.bytes_free)
-                                .unwrap_or(0)
-                        );
-                        let response = TextEdit::singleline(&mut disk).desired_width(150.0).ui(ui);
-                        if response.changed() {
-                            if let Ok(val) = str::parse(&disk) {
-                                self.driverstation.set_disk_usage(Some(
-                                    robot_comm::robot_to_driver::RobotToDriverDiskUsage {
-                                        bytes_free: val,
-                                    },
-                                ));
-                            }
-                        }
-                    });
-
-                    ui.collapsing("Cpu Usage", |ui| {});
-
-                    ui.collapsing("Ram Usage", |ui| {
-                        ui.label("Ram Usage: Bytes free");
-                        let mut ram = format!(
-                            "{}",
-                            self.driverstation
-                                .get_ram_usage()
-                                .map(|f| f.bytes_free)
-                                .unwrap_or(0)
-                        );
-                        let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
-                        if response.changed() {
-                            if let Ok(val) = str::parse(&ram) {
-                                self.driverstation.set_ram_usage(Some(
-                                    robot_comm::robot_to_driver::RobotToDriverRamUsage {
-                                        bytes_free: val,
-                                    },
-                                ));
-                            }
-                        }
-                    });
-
-                    ui.collapsing("Pdp Port Report", |ui| {
-                        // let mut ram = format!("{}", self.driverstation.get_ram_usage().map(|f|f.bytes_free).unwrap_or(0));
-                        // let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
-                        // if response.changed(){
-                        //     if let Ok(val) = str::parse(&ram){
-                        //             self.driverstation.set_ram_usage(Some(robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val }));
-                        //     }
-                        // }
-                    });
-
-                    ui.collapsing("Pdp Power Report", |ui| {
-                        let mut ram = format!(
-                            "{}",
-                            self.driverstation
-                                .get_ram_usage()
-                                .map(|f| f.bytes_free)
-                                .unwrap_or(0)
-                        );
-                        let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
-                        if response.changed() {
-                            if let Ok(val) = str::parse(&ram) {
-                                self.driverstation.set_ram_usage(Some(
-                                    robot_comm::robot_to_driver::RobotToDriverRamUsage {
-                                        bytes_free: val,
-                                    },
-                                ));
-                            }
-                        }
-                    });
-
-                    ui.collapsing("Can Usage", |ui| {
-                        // let mut ram = format!("{}", self.driverstation.get_ram_usage().map(|f|f.bytes_free).unwrap_or(0));
-                        // let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
-                        // if response.changed(){
-                        //     if let Ok(val) = str::parse(&ram){
-                        //             self.driverstation.set_ram_usage(Some(robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val }));
-                        //     }
-                        // }
-                    });
-                });
-
+                self.show_tags(ui);
                 ui.separator();
 
                 // let last_core = self.driverstation.get_last_core_data();
@@ -508,7 +506,7 @@ impl eframe::App for RioUi {
     }
 }
 
-fn idk(){
+fn idk() {
     let mut buf = [0u8; 4096];
     let listener = TcpListener::bind("0.0.0.0:1740").unwrap();
 
@@ -569,19 +567,16 @@ fn idk(){
                         }
                         0x07 => {
                             // match info
-                            let comp = buf.read_short_str()?;
+                            let event_name = buf.read_short_str()?;
                             // 0 None, 1 Practis, 2 quals, 3 elims
-                            let match_style = buf.read_u8()?;
+                            let match_type = buf.read_u8()?;
                             let match_number = buf.read_u16()?;
                             let replay_number = buf.read_u8()?;
-                            println!("0x07 => Comp: {comp}, match: {match_style}, match#: {match_number}, replay#: {replay_number}");
+                            println!("0x07 => event name: {event_name}, match: {match_type}, match#: {match_number}, replay#: {replay_number}");
                         }
                         0x0E => {
                             //Game Data
-                            println!(
-                                "GameData => {:?}",
-                                buf.read_str(buf.remaining_buf_len())?
-                            );
+                            println!("GameData => {:?}", buf.read_str(buf.remaining_buf_len())?);
                         }
                         val => {
                             println!("Unknown data tag: {val:02X}")
@@ -628,7 +623,7 @@ fn idk(){
 
                     send_msg(Message {
                         kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-                            kind: net_comm::robot_to_driverstation::VersionInfo::Empty,
+                            kind: net_comm::robot_to_driverstation::VersionInfo::Empty(Cow::Borrowed("")),
                         },
                     });
 
@@ -680,14 +675,14 @@ fn idk(){
 
 pub fn simulate_roborio() {
     // let com = DriverstationComm::start_comm();
+    println!("{}", std::mem::size_of::<RoborioCom>());
     let com = Arc::new(roborio::RoborioCom::default());
+
     roborio::RoborioCom::start_daemon(com.clone());
 
-    std::thread::spawn(||{
-        loop{
-            let res = std::panic::catch_unwind(idk);
-            println!("{:#?}", res);
-        }
+    std::thread::spawn(|| loop {
+        let res = std::panic::catch_unwind(idk);
+        println!("{:#?}", res);
     });
 
     let options = eframe::NativeOptions {

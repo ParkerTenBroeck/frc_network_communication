@@ -14,11 +14,14 @@ impl<'a> WriteToBuff<'a> for Joysticks {
     type Error = BufferWritterError;
 
     fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
-        for joy in self.data.iter() {
+        for joy in &self.data {
+            let mut buf = buf.create_u8_size_guard()?;
+            buf.write_u8(12)?;
+
             if let Some(joy) = joy {
-                joy.write_to_buf(buf)?;
+                joy.write_to_buf(&mut buf)?;
             } else {
-                Joystick::default().write_to_buf(buf)?;
+                Joystick::default().write_to_buf(&mut buf)?;
             }
         }
         Ok(())
@@ -311,10 +314,6 @@ impl<'a> WriteToBuff<'a> for Joystick {
     type Error = BufferWritterError;
 
     fn write_to_buf<T: BufferWritter<'a>>(&self, buf: &mut T) -> Result<(), Self::Error> {
-        let mut buf = buf.create_u8_size_guard()?;
-
-        buf.write_u8(12)?;
-
         buf.write_u8(self.axis_len())?;
         for i in 0..self.axis_len() {
             buf.write_u8(self.get_axis(i).unwrap() as u8)?;

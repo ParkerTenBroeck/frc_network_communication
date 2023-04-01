@@ -75,7 +75,10 @@ impl<T: MessageHandler> MessageConsole<T> {
                 buff_exact,
             )) {
                 Ok(packet) => self.reciever.receive_message(packet),
-                Err(err) => self.reciever.parse_error(err),
+                Err(err) => {
+                    self.reciever.parse_error(err);
+                    println!("{:?}", buff_exact)
+                }
             }
 
             conn.write_all(&[0, 0]).unwrap();

@@ -6,7 +6,7 @@ mycelium_bitfield::bitfield! {
         pub const FMS_ATTACHED: bool;
         pub const BROWN_OUT_PROTECTION: bool;
         pub const _RESERVED = 1;
-        pub const DS_ATTACHED: bool;
+        pub const STOP_CONNECTION: bool;
         pub const ESTOP: bool;
     }
 }
@@ -48,8 +48,12 @@ impl ControlCode {
         self.get(Self::BROWN_OUT_PROTECTION)
     }
 
+    pub fn set_driverstation_attached(&mut self, arg: bool) {
+        self.set(Self::STOP_CONNECTION, arg);
+    }
+
     pub fn is_driverstation_attached(&self) -> bool {
-        self.get(Self::DS_ATTACHED)
+        self.get(Self::STOP_CONNECTION)
     }
 
     pub fn set_test(&mut self) -> &mut Self {
@@ -93,7 +97,7 @@ impl ControlCode {
     }
 
     pub fn set_ds_attached(&mut self, attached: bool) -> &mut Self {
-        self.set(Self::DS_ATTACHED, attached);
+        self.set(Self::STOP_CONNECTION, attached);
         self
     }
 }

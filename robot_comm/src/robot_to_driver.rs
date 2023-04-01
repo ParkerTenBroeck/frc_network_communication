@@ -193,55 +193,6 @@ impl<'a> WriteToBuff<'a> for RobotToDriverstationPacket {
 
         return Ok(());
 
-        // if true{
-        //     return Ok(());
-        // }
-        // let counter = self.packet as u8;
-        // {
-        //     let mut buf = buf.create_u8_size_guard()?;
-        //                     // can usage
-        //                     buf.write_u8(0x0e)?;
-
-        //                     // utilization % [0, 1.0]
-        //                     buf.write_f32(counter as f32 / 255.0)?;
-        //                     // Bus Off
-        //                     buf.write_u32(5)?;
-        //                     // TX Full
-        //                     buf.write_u32(10)?;
-        //                     // Recieve
-        //                     buf.write_u8(23)?;
-        //                     // Transmit
-        //                     buf.write_u8(32)?;
-        // }
-
-        // let mut buf2 = buf.create_u8_size_guard()?;
-
-        //         // pdp stuff power in possibly amps or something?
-        //         buf2.write_u8(0x08)?;
-        //         // buf.write_buf(&[self.packet as u8; 2])?;
-        //         // let mut data = [1u8; 22];
-        //         // for (index, b) in data.iter_mut().enumerate(){
-        //         //     *b = (index.wrapping_add(self.packet as usize)) as u8
-        //         // }
-        //         // buf.write_buf(&data)?;
-        //         buf2.write_u8(0)?;
-        //         buf2.write_u8(0)?;
-        //         buf2.write_u8(0)?;
-        //         buf2.write_u8(counter)?;
-        //         // for i in 0u32..10{
-        //         //     buf.write_u16( 0)?;
-        //         // }
-        //         // buf.write_buf(&[0;3])?;
-        //         let wbuf = buf2.write(26 - buf2.curr_buf_len())?;
-
-        //         wbuf.fill(0);
-        //         println!("{wbuf:?}");
-        //         drop(buf2);
-
-        // buf.write_u8(0x08)?;
-        // // buf.write_buf(&[0; 22])?;
-        // // buf.write_buf(&[255, 171, 85])?;
-        // buf.write_buf(&[self.packet as u8; 25])?;
         {
             let mut buf = buf.create_u8_size_guard()?;
             // ram

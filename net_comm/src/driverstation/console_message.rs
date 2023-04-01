@@ -14,11 +14,11 @@ impl MessageHandler for SystemConsoleOutput {
                 stack,
                 ..
             } => {
-                if stack.len() > 0 {
-                    println!("\u{001B}[31mError {err}: {msg} at {loc} stack \n{stack}\u{001b}[0m")
-                } else {
-                    println!("\u{001B}[31mError {err}: {msg} at {loc}\u{001b}[0m")
-                }
+                // if stack.len() > 0 {
+                //     println!("\u{001B}[31mError {err}: {msg} at {loc} stack \n{stack}\u{001b}[0m")
+                // } else {
+                //     println!("\u{001B}[31mError {err}: {msg} at {loc}\u{001b}[0m")
+                // }
             }
             MessageKind::Warning {
                 warn,
@@ -27,16 +27,16 @@ impl MessageHandler for SystemConsoleOutput {
                 stack,
                 ..
             } => {
-                if stack.len() > 0 {
-                    println!(
-                        "\u{001B}[33mWarning {warn}: {msg} at {loc} stack \n{stack}\u{001b}[0m"
-                    )
-                } else {
-                    println!("\u{001B}[33mWarning {warn}: {msg} at {loc}\u{001b}[0m")
-                }
+                // if stack.len() > 0 {
+                //     println!(
+                //         "\u{001B}[33mWarning {warn}: {msg} at {loc} stack \n{stack}\u{001b}[0m"
+                //     )
+                // } else {
+                //     println!("\u{001B}[33mWarning {warn}: {msg} at {loc}\u{001b}[0m")
+                // }
             }
             MessageKind::Message { msg, .. } => {
-                println!("{}", msg)
+                // println!("{}", msg)
             }
             MessageKind::ZeroCode { msg } => {
                 println!("ZeroCode: {}", msg)

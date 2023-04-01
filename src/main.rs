@@ -12,7 +12,10 @@ use std::{
 
 use crate::roborio::simulate_roborio;
 use eframe::egui::{self};
-use net_comm::driverstation::{console_message::Ignore, message_handler::MessageConsole};
+use net_comm::driverstation::{
+    console_message::{Ignore, SystemConsoleOutput},
+    message_handler::MessageConsole,
+};
 use robot_comm::{
     common::{joystick::NonNegU16, request_code::RobotRequestCode},
     driverstation::RobotComm,
@@ -146,25 +149,25 @@ pub mod roborio;
 
 fn main() {
     // bruh::run_bruh()
-    // simulate_roborio()
-    run_driverstation()
+    simulate_roborio()
+    // run_driverstation()
 }
 
 pub fn run_driverstation() {
     // listener.
     // simulate_roborio();
 
-    // let ipaddr =
-        // robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
-    let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let ipaddr =
+        robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
+    // let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     // let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
-    println!("FOUND ROBORIO: {:?}", ipaddr);
+    // println!("FOUND ROBORIO: {:?}", ipaddr);
 
     let driverstation = RobotComm::new(Some(ipaddr));
     driverstation.start_new_thread();
-    driverstation.set_request_code(*RobotRequestCode::new().set_normal(true));
+    driverstation.set_request_code(*RobotRequestCode::new().set_request_lib(true));
 
-    MessageConsole::create_new_thread(Ignore {}, ipaddr);
+    MessageConsole::create_new_thread(SystemConsoleOutput {}, ipaddr);
     // MessageConsole::new(SystemConsoleOutput {}).run_blocking(ipaddr);
 
     let options = eframe::NativeOptions {
@@ -227,6 +230,13 @@ impl eframe::App for MyApp {
             if ui.button("restart rio").clicked() {
                 self.driverstation
                     .set_request_code(*RobotRequestCode::new().set_restart_roborio(true))
+            }
+
+            if ui
+                .selectable_label(control.is_driverstation_attached(), "Bruh")
+                .clicked()
+            {
+                self.driverstation.set_ds_attached(true);
             }
 
             ui.input(|i| {

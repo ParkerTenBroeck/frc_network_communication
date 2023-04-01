@@ -133,6 +133,7 @@ impl RobotComm {
             // write our packet to the buffer
             let mut writter = SliceBufferWritter::new(&mut buf);
             let packet_sent_sqeu = cb1_lock.core_data.sequence;
+            cb1_lock.core_data.request_code.set_request_lib(true);
             // cb1_lock.core_data.request_code = RobotRequestCode::from_bits(0b00010000);
             // cb1_lock.core_data.request_code.set_restart_roborio_code(false);
             // cb1_lock.core_data.request_code.set_restart_roborio(false);
@@ -152,6 +153,7 @@ impl RobotComm {
             let sent = match res {
                 Ok(_) => {
                     let buf_to_write = writter.curr_buf();
+                    // println!("{:?}", buf_to_write);
 
                     if let Err(err) = socket.write_raw(buf_to_write) {
                         self.reconnect();

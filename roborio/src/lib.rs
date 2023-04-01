@@ -1,12 +1,14 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, UdpSocket},
     ops::Deref,
-    sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize}
+    panic::{RefUnwindSafe, UnwindSafe},
+    sync::{
+        atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize},
+        Arc,
+    },
 };
 
-use atomic::Atomic;
 use net_comm::robot_voltage::RobotVoltage;
-use rclite::Arc;
 use robot_comm::{
     common::{
         alliance_station::AllianceStation,
@@ -26,7 +28,7 @@ use robot_comm::{
         RobotToDriverstationPacket,
     },
 };
-use spin::Mutex;
+use spin::{Mutex, RwLock};
 use util::{
     buffer_reader::BufferReader,
     buffer_writter::{BufferWritter, BufferWritterError, SliceBufferWritter},
@@ -57,7 +59,7 @@ struct RoborioUdp {
     tag_data: Mutex<RoborioUdpTags>,
     tag_frequences: RoborioUdpTagFrequencies,
 
-    reset_con: AtomicBool,
+    reset_con: AtomicU8,
     connected: AtomicBool,
     bytes_sent: AtomicUsize,
     packets_sent: AtomicUsize,
@@ -68,14 +70,29 @@ struct RoborioUdp {
     packets_dropped: AtomicUsize,
 
     connection_timeout_ms: AtomicU32,
+    read_block_timout_ms: AtomicU32,
 
-    disable_hook: Atomic<Option<fn()>>,
-    teleop_hook: Atomic<Option<fn()>>,
-    auton_hook: Atomic<Option<fn()>>,
-    test_hook: Atomic<Option<fn()>>,
-    estop_hook: Atomic<Option<fn()>>,
-    restart_code_hook: Atomic<Option<fn()>>,
-    restart_rio_hook: Atomic<Option<fn() -> !>>,
+    hooks: RwLock<Hooks>,
+}
+
+type HookDyn = dyn Fn() + Send + Sync + UnwindSafe + RefUnwindSafe + 'static;
+type Hook = Option<Box<HookDyn>>;
+
+#[derive(Default)]
+struct Hooks {
+    disable_hook: Hook,
+    teleop_hook: Hook,
+    auton_hook: Hook,
+    test_hook: Hook,
+    estop_hook: Hook,
+    restart_code_hook: Hook,
+    restart_rio_hook: Hook,
+}
+
+impl std::fmt::Debug for Hooks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hooks").finish()
+    }
 }
 
 impl Default for RoborioUdp {
@@ -99,14 +116,9 @@ impl Default for RoborioUdp {
             packets_dropped: Default::default(),
             //mid
             connection_timeout_ms: AtomicU32::new(10000),
+            read_block_timout_ms: AtomicU32::new(120),
 
-            disable_hook: Default::default(),
-            teleop_hook: Default::default(),
-            auton_hook: Default::default(),
-            test_hook: Default::default(),
-            estop_hook: Default::default(),
-            restart_code_hook: Default::default(),
-            restart_rio_hook: Default::default(),
+            hooks: Default::default(),
         }
     }
 }
@@ -146,7 +158,7 @@ impl Default for RoborioUdpTagFrequencies {
 }
 
 #[derive(Debug)]
-enum RoborioComError {
+pub enum RoborioComError {
     UdpIoInitError(std::io::Error),
     UdpIoSendError(std::io::Error),
     UdpIoReceiveError(std::io::Error),
@@ -158,10 +170,12 @@ enum RoborioComError {
     ModeSwitchHookPanic(Box<dyn std::any::Any + Send>),
 }
 
+type ErrorHandler =
+    Box<dyn Fn(&RoborioCom, RoborioComError) + Send + Sync + UnwindSafe + RefUnwindSafe + 'static>;
 // #[derive(Debug)]
 struct RoborioCommon {
     request_info: AtomicBool,
-    error_handler: Atomic<fn(&RoborioCom, RoborioComError)>,
+    error_handler: RwLock<ErrorHandler>,
 }
 impl std::fmt::Debug for RoborioCommon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -173,15 +187,14 @@ impl std::fmt::Debug for RoborioCommon {
 
 impl Default for RoborioCommon {
     fn default() -> Self {
+        fn default_error_handler(_com: &RoborioCom, err: RoborioComError) {
+            eprintln!("{:#?}", err)
+        }
         Self {
             request_info: Default::default(),
-            error_handler: Atomic::new(default_error_handler),
+            error_handler: RwLock::new(Box::new(default_error_handler)),
         }
     }
-}
-
-fn default_error_handler(_com: &RoborioCom, err: RoborioComError) {
-    eprintln!("{:#?}", err)
 }
 
 impl RoborioCom {
@@ -205,7 +218,7 @@ impl RoborioCom {
     }
 
     fn report_error(&self, err: RoborioComError) {
-        self.common.error_handler.load(atomic::Ordering::Relaxed)(self, err)
+        self.common.error_handler.read()(self, err)
     }
 }
 
@@ -221,7 +234,7 @@ impl RoborioCom {
             let listener = match listener {
                 Ok(listener) => listener,
                 Err(err) => {
-                    println!("Failed to start roborio TCP daemon: {err:?}");
+                    println!("Failed to start roborio TCP daemon: {err:#?}");
                     continue;
                 }
             };
@@ -239,29 +252,33 @@ impl RoborioCom {
 impl RoborioCom {
     fn run_udp_daemon<T: 'static + Send + PossibleRcSelf + Deref<Target = Self>>(myself: &T) {
         use std::sync::atomic::Ordering::Relaxed;
-        while myself.exists_elsewhere() {
-            // reset out udp information every time reconnect
-            myself.udp.driverstation_ip.lock().take();
-            myself.udp.packets_dropped.store(0, Relaxed);
-            myself.udp.connected.store(false, Relaxed);
-            myself.udp.bytes_received.store(0, Relaxed);
-            myself.udp.packets_received.store(0, Relaxed);
-            myself.udp.packets_sent.store(0, Relaxed);
-            myself.udp.bytes_sent.store(0, Relaxed);
-            *myself.udp.time.lock() = TimeData::default();
-            *myself.udp.joystick_values.lock() = [None; 6];
-            {
-                // these two states percist across reconnects
-                let mut lock = myself.udp.observed_information.lock();
-                *lock = RobotToDriverstationPacket {
-                    tag_comm_version: 1,
-                    control_code: *ControlCode::default()
-                        .set_estop(lock.control_code.is_estop())
-                        .set_brownout_protection(lock.control_code.is_brown_out_protection()),
-                    ..Default::default()
-                };
+        while (*myself).exists_elsewhere() {
+            let reset_kind = myself.udp.reset_con.swap(0, Relaxed);
+            if reset_kind >= 2 {
+                myself.force_disable();
+                // reset out udp information every time reconnect
+                myself.udp.driverstation_ip.lock().take();
+                myself.udp.packets_dropped.store(0, Relaxed);
+                myself.udp.connected.store(false, Relaxed);
+                myself.udp.bytes_received.store(0, Relaxed);
+                myself.udp.packets_received.store(0, Relaxed);
+                myself.udp.packets_sent.store(0, Relaxed);
+                myself.udp.bytes_sent.store(0, Relaxed);
+                *myself.udp.time.lock() = TimeData::default();
+                *myself.udp.joystick_values.lock() = [None; 6];
+                {
+                    // these two states percist across reconnects
+                    let mut lock = myself.udp.observed_information.lock();
+                    *lock = RobotToDriverstationPacket {
+                        tag_comm_version: 1,
+                        control_code: *ControlCode::default()
+                            .set_estop(lock.control_code.is_estop())
+                            .set_brownout_protection(lock.control_code.is_brown_out_protection()),
+                        ..Default::default()
+                    };
+                }
+                *myself.udp.countdown.lock() = None;
             }
-            *myself.udp.countdown.lock() = None;
 
             // we should accept from any adress on port 1110
             let socket =
@@ -275,7 +292,9 @@ impl RoborioCom {
                     }
                 };
             // idk this time is sorta random :3
-            match socket.set_read_timeout(Some(std::time::Duration::from_millis(50))) {
+            match socket.set_read_timeout(Some(std::time::Duration::from_millis(
+                myself.udp.read_block_timout_ms.load(Relaxed) as u64,
+            ))) {
                 Ok(_) => {}
                 Err(err) => {
                     myself.report_error(RoborioComError::UdpIoInitError(err));
@@ -284,84 +303,104 @@ impl RoborioCom {
                 }
             }
 
-            // we should treat a new connection as a sucsess
-            let mut last_sucsess = std::time::Instant::now();
+            // this runs until we need to reconnect or exit the daemon
+            myself.run_udp_daemon_inner(myself, socket);
+        }
+    }
 
-            let mut send_addr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
-            let mut send_buf = [0u8; 1024];
-            let mut recv_buf = [0u8; 1024];
-            while myself.exists_elsewhere() {
-                if myself.udp.reset_con.swap(false, Relaxed) {
-                    break;
-                }
-                match socket.recv_from(&mut recv_buf) {
-                    Ok((read, rec_addr)) => {
-                        myself.udp.bytes_received.fetch_add(read, Relaxed);
-                        let recv_buf = &recv_buf[..read];
+    fn run_udp_daemon_inner<T: 'static + Send + PossibleRcSelf + Deref<Target = Self>>(
+        &self,
+        myself_poss_ref: &T,
+        socket: UdpSocket,
+    ) {
+        use std::sync::atomic::Ordering::Relaxed;
+        // we should treat a new connection as a sucsess
+        let mut last_sucsess = std::time::Instant::now();
 
-                        if send_addr != rec_addr.ip() && myself.udp.connected.load(Relaxed) {
-                            //reconnect if theres a new address to send to
-                            if last_sucsess.elapsed()
-                                > std::time::Duration::from_millis(
-                                    myself.udp.connection_timeout_ms.load(Relaxed) as u64,
-                                )
-                            {
-                                break;
-                            } else {
-                                continue;
-                            }
-                        } else if !myself.udp.connected.load(Relaxed) {
-                            // if we aren't already connected
-                            send_addr = rec_addr.ip();
-                            *myself.udp.driverstation_ip.lock() = Some(send_addr);
-                        }
+        let mut send_addr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+        let mut send_buf = [0u8; 1024];
+        let mut recv_buf = [0u8; 1024];
+        while (*myself_poss_ref).exists_elsewhere() {
+            if self.udp.reset_con.load(Relaxed) != 0 {
+                return;
+            }
+            match socket.recv_from(&mut recv_buf) {
+                Ok((read, rec_addr)) => {
+                    self.udp.bytes_received.fetch_add(read, Relaxed);
+                    let recv_buf = &recv_buf[..read];
 
-                        let mut reader = BufferReader::new(recv_buf);
-                        match DriverToRobotPacketReader::new(&mut reader) {
-                            Ok((recv_packet, reader)) => {
-                                myself.respond_to_udp_packet(
-                                    &mut send_buf,
-                                    &socket,
-                                    send_addr,
-                                    recv_packet,
-                                );
-
-                                // read the additional tags and extra data after because it could possibly be slow
-                                match reader.read_tags(UdpTagAcceptor { daemon: myself }) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        myself.report_error(RoborioComError::UdpPacketTagReadError(err))
-                                    }
-                                }
-
-                                // if we've got this far yay!!
-                                myself.udp.packets_received.fetch_add(1, Relaxed);
-
-                                last_sucsess = std::time::Instant::now()
-                            }
-                            Err(err) => {
-                                myself.udp.connected.store(false, Relaxed);
-                                myself.report_error(RoborioComError::UdpCorePacketReadError(err));
-                            }
-                        }
-                    }
-                    Err(err) => {
+                    if send_addr != rec_addr.ip() && self.udp.connected.load(Relaxed) {
+                        //reconnect if theres a new address to send to
                         if last_sucsess.elapsed()
                             > std::time::Duration::from_millis(
-                                myself.udp.connection_timeout_ms.load(Relaxed) as u64,
+                                self.udp.connection_timeout_ms.load(Relaxed) as u64,
                             )
                         {
-                            myself.report_error(RoborioComError::UdpConnectionTimeoutError);
+                            // when the IP changes we want to treat this as a new connection
+                            self.udp.reset_con.store(2, Relaxed);
                             break;
-                        }
-                        if err.kind() == std::io::ErrorKind::WouldBlock {
-                            myself.udp.connected.store(false, Relaxed);
-                            continue;
                         } else {
-                            // reset connection
-                            myself.report_error(RoborioComError::UdpIoReceiveError(err));
-                            break;
+                            continue;
                         }
+                    } else if !self.udp.connected.load(Relaxed) {
+                        // if we aren't already connected
+                        send_addr = rec_addr.ip();
+                        *self.udp.driverstation_ip.lock() = Some(send_addr);
+                    }
+
+                    let mut reader = BufferReader::new(recv_buf);
+                    match DriverToRobotPacketReader::new(&mut reader) {
+                        Ok((recv_packet, reader)) => {
+                            self.respond_to_udp_packet(
+                                &mut send_buf,
+                                &socket,
+                                send_addr,
+                                recv_packet,
+                            );
+
+                            // if we've got this far yipee!!
+                            self.udp.packets_received.fetch_add(1, Relaxed);
+
+                            // read the additional tags and extra data after because it could possibly be slow
+                            if let Err(err) = reader.read_tags(UdpTagAcceptor { daemon: self }) {
+                                //waaaaa!
+                                self.report_error(RoborioComError::UdpPacketTagReadError(err))
+                            }
+
+                            if recv_packet.request_code.is_requesting_lib_info() {
+                                self.common.request_info.store(true, Relaxed);
+                            }
+
+                            last_sucsess = std::time::Instant::now()
+                        }
+                        Err(err) => {
+                            self.udp.connected.store(false, Relaxed);
+                            self.report_error(RoborioComError::UdpCorePacketReadError(err));
+                        }
+                    }
+                }
+                Err(err) => {
+                    if last_sucsess.elapsed()
+                        > std::time::Duration::from_millis(
+                            self.udp.connection_timeout_ms.load(Relaxed) as u64,
+                        )
+                    {
+                        // not sure if this should be 1 or 2, either way we should force disable
+                        self.force_disable();
+                        self.udp.reset_con.store(1, Relaxed);
+                        self.udp.connected.store(false, Relaxed);
+                        self.report_error(RoborioComError::UdpConnectionTimeoutError);
+                        break;
+                    }
+                    if err.kind() == std::io::ErrorKind::WouldBlock {
+                        // were still connected however we haven't received a packet in time so we should force disable
+                        self.force_disable();
+                    } else {
+                        // if theres an IO error something weird happened so reset the connection
+                        self.udp.reset_con.store(2, Relaxed);
+                        self.udp.connected.store(false, Relaxed);
+                        self.report_error(RoborioComError::UdpIoReceiveError(err));
+                        return;
                     }
                 }
             }
@@ -369,36 +408,54 @@ impl RoborioCom {
     }
 
     #[cold]
-    fn run_estop_hook(&self) {
-        use atomic::Ordering::Relaxed;
+    fn force_disable(&self) {
+        let mut obv_lock = self.udp.observed_information.lock();
+        let mut recv_lock = self.udp.recv.lock();
+        let old = obv_lock.control_code;
 
-        if let Some(hook) = self.udp.estop_hook.load(Relaxed) {
+        obv_lock.control_code.set_disabled();
+        obv_lock.control_code.set_teleop();
+        recv_lock.control_code.set_disabled();
+        recv_lock.control_code.set_teleop();
+
+        let new = obv_lock.control_code;
+        drop(obv_lock);
+        drop(recv_lock);
+        self.run_hooks(
+            old,
+            new,
+            RobotRequestCode::new(), /*Empty request code*/
+        );
+    }
+
+    #[cold]
+    fn run_estop_hook(&self) {
+        if let Some(hook) = &self.udp.hooks.read().estop_hook {
             let res = std::panic::catch_unwind(hook);
 
             if let Err(err) = res {
                 std::mem::forget(err);
-                self.udp.restart_rio_hook.load(Relaxed).unwrap()();
+                // oh god oh f**k HCF out of here aldfhlks
+                self.udp.hooks.read().restart_rio_hook.as_ref().unwrap()();
             }
         }
     }
 
     #[cold]
     fn run_hooks(&self, old: ControlCode, new: ControlCode, request: RobotRequestCode) {
-        use atomic::Ordering::Relaxed;
-
         if !old.is_estop() && new.is_estop() {
             self.run_estop_hook()
         }
 
         if request.should_restart_roborio() {
-            if let Some(hook) = self.udp.restart_rio_hook.load(Relaxed) {
+            if let Some(hook) = &self.udp.hooks.read().restart_rio_hook {
                 // if this panics were f**ked so very hard
                 hook()
             }
         }
 
         if request.should_restart_roborio_code() {
-            if let Some(hook) = self.udp.restart_code_hook.load(Relaxed) {
+            if let Some(hook) = &self.udp.hooks.read().restart_code_hook {
                 let res = std::panic::catch_unwind(hook);
                 // if we panic here do a -not so gracful- process abort~
                 if let Err(err) = res {
@@ -408,34 +465,35 @@ impl RoborioCom {
             }
         }
         macro_rules! mode_switch_hook {
+            // ($hook:ident) => {
+            //     let res = std::panic::catch_unwind(|| $hook());
+            //     if let Err(err) = res {
+            //         self.report_error(RoborioComError::ModeSwitchHookPanic(err));
+            //         self.run_estop_hook();
+            //     }
+            // };
             ($hook:ident) => {
-                let res = std::panic::catch_unwind(|| $hook());
-                if let Err(err) = res {
-                    self.report_error(RoborioComError::ModeSwitchHookPanic(err));
-                    self.run_estop_hook();
+                if let Some($hook) = &self.udp.hooks.read().$hook {
+                    let res = std::panic::catch_unwind($hook);
+                    if let Err(err) = res {
+                        self.report_error(RoborioComError::ModeSwitchHookPanic(err));
+                        self.run_estop_hook();
+                    }
                 }
             };
         }
 
         if !old.is_disabled() && new.is_disabled() {
-            if let Some(hook) = self.udp.disable_hook.load(Relaxed) {
-                mode_switch_hook!(hook);
-            }
+            mode_switch_hook!(disable_hook);
         // the mode can be teleop/auton/test even when disabled
         // so the if else ensures that we dont run each respective hook
         // until we actually enable
         } else if !old.is_teleop() && new.is_teleop() {
-            if let Some(hook) = self.udp.teleop_hook.load(Relaxed) {
-                mode_switch_hook!(hook);
-            }
+            mode_switch_hook!(teleop_hook);
         } else if !old.is_autonomus() && new.is_autonomus() {
-            if let Some(hook) = self.udp.auton_hook.load(Relaxed) {
-                mode_switch_hook!(hook);
-            }
+            mode_switch_hook!(auton_hook);
         } else if !old.is_test() && new.is_test() {
-            if let Some(hook) = self.udp.test_hook.load(Relaxed) {
-                mode_switch_hook!(hook);
-            }
+            mode_switch_hook!(test_hook);
         }
     }
 
@@ -486,6 +544,12 @@ impl RoborioCom {
         if recv_packet.control_code.is_disabled() {
             packet.request.set_request_disable(false);
         }
+
+        if self.udp.clear_observed_status_on_send.load(Relaxed) {
+            packet.status.set_disabled();
+            packet.status.set_has_robot_code(false);
+        }
+
         drop(packet);
 
         'response: {
@@ -517,13 +581,8 @@ impl RoborioCom {
             }
         }
 
-        if recv_packet.request_code.should_restart_roborio()
-            || recv_packet.request_code.should_restart_roborio()
-            || old_control_code.get(ControlCode::MODE) != new_control_code.get(ControlCode::MODE)
-            || old_control_code.is_disabled() != new_control_code.is_disabled()
-        {
-            self.run_hooks(old_control_code, new_control_code, recv_packet.request_code);
-        }
+        // TODO: we could potentially speed up/optimize by checking for a change in the controlcode/request code before we call this?
+        self.run_hooks(old_control_code, new_control_code, recv_packet.request_code);
     }
 
     /// Write the tags to the response packet writter acording the current settings/data in outself
@@ -537,8 +596,7 @@ impl RoborioCom {
             let lock = self.udp.tag_data.lock();
             let packets_sent = self.udp.packets_sent.load(Relaxed);
 
-            // TODO: report errros better
-            macro_rules! tag_thing {
+            macro_rules! write_tag {
                 ($tag:ident) => {
                     if let Some($tag) = lock.$tag{
                         if let Err(err) = packet_writter.$tag($tag){
@@ -575,13 +633,13 @@ impl RoborioCom {
                 };
             }
 
-            tag_thing!(rumble);
-            tag_thing!(disk_usage, disk_usage_m, 1);
-            tag_thing!(&cpu_usage, cpu_usage_m, 2);
-            tag_thing!(ram_usage, ram_usage_m, 3);
-            tag_thing!(&pdp_port_report, pdp_port_report_m, 4);
-            tag_thing!(pdp_power_report, pdp_power_report_m, 5);
-            tag_thing!(can_usage, can_usage_m, 6);
+            write_tag!(rumble);
+            write_tag!(disk_usage, disk_usage_m, 1);
+            write_tag!(&cpu_usage, cpu_usage_m, 2);
+            write_tag!(ram_usage, ram_usage_m, 3);
+            write_tag!(&pdp_port_report, pdp_port_report_m, 4);
+            write_tag!(pdp_power_report, pdp_power_report_m, 5);
+            write_tag!(can_usage, can_usage_m, 6);
         }
     }
 
@@ -616,10 +674,23 @@ impl<'a> PacketTagAcceptor for UdpTagAcceptor<'a> {
 }
 
 impl RoborioCom {
-    pub fn reset_con(&self) {
+    pub fn reset_all_values(&self) {
         self.udp
             .reset_con
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(2, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn reconnect(&self) {
+        // we dont want to override the reset con value if its stronger than 1
+        // so we can use compare exchange to only set it when its zero
+        // if it fails because the current value is 1 thats fine its what we want
+        // and if it fails because the current value is greater than 1 it has a stronger reset and will do what we want
+        let _ = self.udp.reset_con.compare_exchange(
+            0,
+            1,
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     pub fn crash_driverstation(&self) {
@@ -631,6 +702,10 @@ impl RoborioCom {
 
 //udp tings
 impl RoborioCom {
+    pub fn get_driverstation_ip(&self) -> Option<IpAddr> {
+        *self.udp.driverstation_ip.lock()
+    }
+
     pub fn request_time(&self) {
         self.udp
             .observed_information
@@ -748,7 +823,7 @@ impl RoborioCom {
             .packets_dropped
             .load(std::sync::atomic::Ordering::Relaxed)
     }
-    
+
     pub fn get_udp_packets_sent(&self) -> usize {
         self.udp
             .packets_sent
@@ -827,6 +902,28 @@ impl RoborioCom {
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    pub fn set_udp_read_blocking_timeout(&self, read_blocking_timeout_ms: u32) {
+        self.udp.read_block_timout_ms.store(
+            read_blocking_timeout_ms,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        // we dont want to override the reset con value if its stronger than 1
+        // so we can use compare exchange to only set it when its zero
+        // if it fails because the current value is 1 thats fine its what we want
+        // and if it fails because the current value is greater than 1 it has a stronger reset and will do what we want
+        let _ = self.udp.reset_con.compare_exchange(
+            0,
+            1,
+            std::sync::atomic::Ordering::Release,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    pub fn get_udp_read_blocking_timeout(&self) -> u32 {
+        self.udp
+            .read_block_timout_ms
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     //------------------------------ tags
 
     pub fn set_rumble(&self, rumble: Option<RobotToDriverRumble>) {
@@ -892,14 +989,80 @@ impl RoborioCom {
     }
 }
 
+macro_rules! generate_hook_setters {
+    ($($hook:ident, $fn_name:ident, $remove_fn_name:ident)*) => {
+        impl RoborioCom{
+            $(
+                pub fn $fn_name(&self, func: impl Fn() + Send + Sync + RefUnwindSafe + UnwindSafe + 'static ) -> Hook{
+                    let mut func: Hook = Some(Box::new(func));
+                    let mut lock = self.udp.hooks.write();
+                    std::mem::swap(&mut func, &mut lock.$hook);
+                    drop(lock);
+                    func
+                }
+
+                pub fn $remove_fn_name(&self) -> Hook{
+                    let mut func: Hook = None;
+                    let mut lock = self.udp.hooks.write();
+                    std::mem::swap(&mut func, &mut lock.$hook);
+                    drop(lock);
+                    func
+                }
+            )*
+        }
+    };
+}
+
+generate_hook_setters!(
+    disable_hook, set_disable_hook, take_disable_hook
+    teleop_hook, set_teleop_hook, take_teleop_hook
+    auton_hook, set_auton_hook, take_auton_hook
+    test_hook, set_test_hook, take_test_hook
+    estop_hook, set_estop_hook, take_estop_hook
+    restart_code_hook, set_restart_code_hook, take_restart_code_hook
+    restart_rio_hook, set_restart_rio_hook, take_restart_rio_hook
+);
+
+impl RoborioCom {
+    pub fn set_error_handler(
+        &self,
+        handler: impl Fn(&RoborioCom, RoborioComError)
+            + Send
+            + Sync
+            + UnwindSafe
+            + RefUnwindSafe
+            + 'static,
+    ) -> ErrorHandler {
+        let mut func: ErrorHandler = Box::new(handler);
+        let mut lock = self.common.error_handler.write();
+        std::mem::swap(&mut func, &mut *lock);
+        drop(lock);
+        func
+    }
+}
+
 macro_rules! generate_udp_tag_data_frequencies_impl {
     ($($get_fn_name:ident, $set_fn_name:ident, $var_name:ident,)*) => {
         $(impl RoborioCom{
+
+            /// Gets the frequency that this tag will be included in the packet
+            /// a value of 1 will means the tag is included in every packet
+            /// 2 will include it every other packet and so on.
+            ///
+            /// NOTE: The tag will not be included no matter the value of the frequency if it doesn't exist.
+            ///
+            /// A value of zero indicates this tag will never be sent even if it exists.
             pub fn $get_fn_name(&self) -> u8 {
                 self.udp.tag_frequences.$var_name.load(std::sync::atomic::Ordering::Relaxed)
             }
 
-            /// $set_fn_name
+            /// Sets the frequency that this tag will be included in the packet
+            /// setting `val` to 1 will make make it so the tag is included in every packet
+            /// 2 will include it every other packet and so on.
+            ///
+            /// NOTE: The tag will not be included no matter the value of the frequency if it doesn't exist.
+            ///
+            /// Setting `val` to zero will disable the tag from being included even if it exists
             pub fn $set_fn_name(&self, val: u8) {
                 self.udp.tag_frequences.$var_name.store(val, std::sync::atomic::Ordering::Relaxed)
             }
@@ -939,12 +1102,6 @@ impl<T> PossibleRcSelf for &T {
 }
 
 impl<T> PossibleRcSelf for Arc<T> {
-    fn exists_elsewhere(&self) -> bool {
-        self.strong_count() > 1
-    }
-}
-
-impl<T> PossibleRcSelf for std::sync::Arc<T> {
     fn exists_elsewhere(&self) -> bool {
         std::sync::Arc::strong_count(self) > 1
     }

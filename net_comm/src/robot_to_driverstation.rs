@@ -17,7 +17,7 @@ pub enum VersionInfo<'a> {
     CANTalon(u16, u8),
     PDP(u16, u8),
     PCM(u16, u8),
-    Empty,
+    Empty(Cow<'a, str>),
 }
 
 impl<'a> VersionInfo<'a> {
@@ -25,7 +25,7 @@ impl<'a> VersionInfo<'a> {
         match self {
             VersionInfo::LibCVersion(_) => "FRC_Lib_Version",
             VersionInfo::ImageVersion(_) => "roboRIO Image",
-            VersionInfo::Empty
+            VersionInfo::Empty(_)
             | VersionInfo::CANTalon(..)
             | VersionInfo::PDP(..)
             | VersionInfo::PCM(..) => "",
@@ -38,7 +38,7 @@ impl<'a> VersionInfo<'a> {
             VersionInfo::CANTalon(..) => 2,
             VersionInfo::PDP(..) => 8,
             VersionInfo::PCM(..) => 9,
-            VersionInfo::Empty => 0,
+            VersionInfo::Empty(_) => 0,
         }
     }
 }
@@ -307,6 +307,19 @@ impl<'a> CreateFromBuf<'a> for Message<'a> {
                     msg: Cow::Borrowed(buf.read_str(buf.remaining_buf_len())?),
                 },
             },
+            0x04 => Self {
+                kind: MessageKind::DisableFaults {
+                    comms: buf.read_u16()?,
+                    fault_12v: buf.read_u16()?,
+                },
+            },
+            0x05 => Self {
+                kind: MessageKind::RailFaults {
+                    short_6v: buf.read_u16()?,
+                    short_5v: buf.read_u16()?,
+                    short_3_3v: buf.read_u16()?,
+                },
+            },
 
             0x0A => Self {
                 kind: MessageKind::VersionInfo {
@@ -324,7 +337,7 @@ impl<'a> CreateFromBuf<'a> for Message<'a> {
                                     "FRC_Lib_Version" => VersionInfo::LibCVersion(Cow::Borrowed(
                                         buf.read_short_str()?,
                                     )),
-                                    "" => VersionInfo::Empty,
+                                    "" => VersionInfo::Empty(Cow::Borrowed(buf.read_short_str()?)),
                                     _ => Err(MessageReadError::InvalidReportTag(tag.to_owned()))?,
                                 }
                             }
@@ -418,13 +431,6 @@ impl<'a> CreateFromBuf<'a> for Message<'a> {
                     third_top_signal: buf.read_u8()?,
                 },
             },
-            0x05 => Self {
-                kind: MessageKind::RailFaults {
-                    short_6v: buf.read_u16()?,
-                    short_5v: buf.read_u16()?,
-                    short_3_3v: buf.read_u16()?,
-                },
-            },
             _ => {
                 println!("{:?}", buf.read_amount(buf.remaining_buf_len())?);
                 Err(MessageReadError::InvalidMsgCode(msg_code))?
@@ -509,9 +515,10 @@ impl<'a, 'm> WriteToBuff<'a> for Message<'m> {
                         //tags and strings
                         buf.write_u16(0)?;
                     }
-                    VersionInfo::Empty => {
+                    VersionInfo::Empty(str) => {
                         // this shidz emptyyy
-                        buf.write(5)?.fill(0);
+                        buf.write(4)?.fill(0);
+                        buf.write_short_str(str)?;
                     }
                 }
             }
