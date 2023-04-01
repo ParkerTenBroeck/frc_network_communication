@@ -680,10 +680,10 @@ pub fn simulate_roborio() {
 
     roborio::RoborioCom::start_daemon(com.clone());
 
-    std::thread::spawn(|| loop {
-        let res = std::panic::catch_unwind(idk);
-        println!("{:#?}", res);
-    });
+    // std::thread::spawn(|| loop {
+    //     let res = std::panic::catch_unwind(idk);
+    //     println!("{:#?}", res);
+    // });
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(720.0, 480.0)),

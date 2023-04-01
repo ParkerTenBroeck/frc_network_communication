@@ -154,21 +154,6 @@ pub enum MessageKindBorrowed<'a> {
     },
 }
 
-mod test {
-    use std::mem::size_of;
-
-    use crate::robot_to_driverstation::{MessageKind, MessageKindBorrowed, VersionInfo};
-
-    #[test]
-    pub fn test() {
-        panic!(
-            "{}, {}",
-            size_of::<MessageKind>(),
-            size_of::<MessageKindBorrowed>()
-        )
-    }
-}
-
 impl<'a> MessageKind<'a> {
     fn get_code(&self) -> u8 {
         match self {
