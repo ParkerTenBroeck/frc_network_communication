@@ -244,8 +244,14 @@ impl RobotComm {
                 }
             }
 
-            let elapsed = start.elapsed();
-            if let Some(sleep) = std::time::Duration::from_millis(20).checked_sub(elapsed) {
+            let packet_elapsed = start.elapsed();
+            // println!("rolling: {:02.4}ms", rolling_elapsed.as_secs_f64() * 1000.0);
+            // println!("packet: {:02.4}ms", packet_elapsed.as_secs_f64() * 1000.0);
+            // if true{
+            //     continue;
+            // }
+            if let Some(sleep) = std::time::Duration::from_millis(20).checked_sub(packet_elapsed) {
+                
                 if drift < 0.0 {
                     if let Some(sleep) =
                         sleep.checked_sub(std::time::Duration::from_secs_f64(-drift))

@@ -332,6 +332,8 @@ impl<'a> CreateFromBuf<'a> for Message<'a> {
                                 let can_id = buf.read_u8()?;
                                 buf.assert_n_zero(2)?;
                                 buf.assert_empty()?;
+
+                                
                                 VersionInfo::CANTalon(idk, can_id)
                             }
                             8 => {

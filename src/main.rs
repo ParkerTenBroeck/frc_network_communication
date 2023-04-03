@@ -14,14 +14,14 @@ use crate::roborio::simulate_roborio;
 use eframe::egui::{self};
 use net_comm::driverstation::{
     console_message::{Ignore, SystemConsoleOutput},
-    message_handler::MessageConsole,
+    message_handler::MessageConsole, self,
 };
 use robot_comm::{
-    common::{joystick::NonNegU16, request_code::RobotRequestCode},
+    common::{joystick::{NonNegU16, Joystick}, request_code::RobotRequestCode},
     driverstation::RobotComm,
 };
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct Pov {
     val: u8,
 }
@@ -143,29 +143,156 @@ impl Pov {
 //     }
 // }
 
+pub fn controller(driverstation: Arc<RobotComm>){
+    let mut gilrs = gilrs::Gilrs::new().unwrap();
+    // gilrs.gamepads()
+    let mut povs = [Pov::default(); 6];
+    loop{
+        while let Some(event) = gilrs.next_event(){
+            println!("{:#?}", event);
+
+            driverstation.modify_joystick(event.id.into(), |controller|{
+                if event.event == gilrs::EventType::Connected || controller.is_none(){
+                    let mut default = Joystick::default();
+
+                    for _ in 0..6{
+                        default.push_axis(0).unwrap();
+                    }
+                    for _ in 0..10{
+                        default.push_button(false).unwrap();
+                    }
+                    default.push_pov(NonNegU16::none()).unwrap();
+
+                    *controller = Some(default);
+                }else if event.event == gilrs::EventType::Disconnected || event.event == gilrs::EventType::Dropped{
+                    *controller = None;
+                }
+                if let Some(controller) = controller.as_mut(){
+                    match event.event{
+                        gilrs::EventType::ButtonChanged(butt, val, _) => {
+                            match butt{
+                                gilrs::Button::LeftTrigger2 => 
+                                    controller.set_axis(2, (val * 127.5 - 0.5) as i8).unwrap(),
+                                gilrs::Button::RightTrigger2 => 
+                                controller.set_axis(3, (val * 127.5 - 0.5) as i8).unwrap(),
+                                _ => {}
+                            }
+                        }
+                        gilrs::EventType::ButtonPressed(butt, _) |
+                        gilrs::EventType::ButtonReleased(butt, _) => {
+                            let val = matches!(event.event, gilrs::EventType::ButtonPressed(..));
+
+                            let index = match butt{
+                                gilrs::Button::South => 0,
+                                gilrs::Button::East => 1,
+                                gilrs::Button::North => 3,
+                                gilrs::Button::West => 2,
+                                // gilrs::Button::C => todo!(),
+                                // gilrs::Button::Z => todo!(),
+                                gilrs::Button::LeftTrigger => 6,
+                                // gilrs::Button::LeftTrigger2 => todo!(),
+                                gilrs::Button::RightTrigger => 7,
+                                // gilrs::Button::RightTrigger2 => todo!(),
+                                gilrs::Button::Select => 4,
+                                gilrs::Button::Start => 5,
+                                // gilrs::Button::Mode => todo!(),
+                                gilrs::Button::LeftThumb => 8,
+                                gilrs::Button::RightThumb => 9,
+
+                                // no DPAD kinda barbonzo
+                                gilrs::Button::DPadUp => {
+                                    let index: usize = event.id.into();
+                                    povs[index].set_up(val);
+                                    controller.set_pov(0, povs[index].to_val()).unwrap();
+                                    return;
+                                },
+                                gilrs::Button::DPadDown => {
+                                    let index: usize = event.id.into();
+                                    povs[index].set_down(val);
+                                    controller.set_pov(0, povs[index].to_val()).unwrap();
+                                    return;
+                                },
+                                gilrs::Button::DPadLeft => {
+                                    let index: usize = event.id.into();
+                                    povs[index].set_left(val);
+                                    controller.set_pov(0, povs[index].to_val()).unwrap();
+                                    return;
+                                },
+                                gilrs::Button::DPadRight => {
+                                    let index: usize = event.id.into();
+                                    povs[index].set_right(val);
+                                    controller.set_pov(0, povs[index].to_val()).unwrap();
+                                    return;
+                                },
+
+
+                                // gilrs::Button::Unknown => todo!(),
+                                _ => {return}
+                            };
+                            controller.set_button(index, val).unwrap();
+                        },
+                        // gilrs::EventType::ButtonReleased(_, _) => todo!(),
+                        // gilrs::EventType::ButtonChanged(_, _, _) => todo!(),
+                        gilrs::EventType::AxisChanged(axis, val, _) => {
+                            match axis{
+                                gilrs::Axis::LeftStickX => 
+                                controller.set_axis(0, (val * 127.5 - 0.5) as i8).unwrap(),
+                                gilrs::Axis::LeftStickY => 
+                                controller.set_axis(1, (val * 127.5 - 0.5) as i8).unwrap(),
+                                // gilrs::Axis::LeftZ => 
+                                // controller.set_axis(2, (val * 127.5 - 0.5) as i8).unwrap(),
+                                // gilrs::Axis::RightZ => 
+                                // controller.set_axis(3, (val * 127.5 - 0.5) as i8).unwrap(),
+                                gilrs::Axis::RightStickX => 
+                                controller.set_axis(4, (val * 127.5 - 0.5) as i8).unwrap(),
+                                gilrs::Axis::RightStickY => 
+                                controller.set_axis(5, (val * 127.5 - 0.5) as i8).unwrap(),
+                                _ => {}
+                                // gilrs::Axis::DPadX => todo!(),
+                                // gilrs::Axis::DPadY => todo!(),
+                                // gilrs::Axis::Unknown => todo!(),
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+            });
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(10))
+    }
+}
+
 pub mod bruh;
 pub mod controllers;
 pub mod roborio;
 
 fn main() {
     // bruh::run_bruh()
-    simulate_roborio()
-    // run_driverstation()
+    // simulate_roborio()
+    run_driverstation()
 }
 
 pub fn run_driverstation() {
     // listener.
     // simulate_roborio();
 
-    let ipaddr =
-        robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
+    // let ipaddr =
+        // robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
     // let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-    // let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
+    let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
     // println!("FOUND ROBORIO: {:?}", ipaddr);
 
     let driverstation = RobotComm::new(Some(ipaddr));
     driverstation.start_new_thread();
     driverstation.set_request_code(*RobotRequestCode::new().set_request_lib(true));
+
+    {
+        let driverstation = driverstation.clone();
+        _ = std::thread::spawn(move ||{
+            controller(driverstation)
+        });
+    }
 
     MessageConsole::create_new_thread(SystemConsoleOutput {}, ipaddr);
     // MessageConsole::new(SystemConsoleOutput {}).run_blocking(ipaddr);
@@ -238,37 +365,41 @@ impl eframe::App for MyApp {
             {
                 self.driverstation.set_ds_attached(true);
             }
+            self.driverstation.modify_joystick(0, |joy|{
 
-            ui.input(|i| {
-                let speed =
-                    i.key_down(egui::Key::W) as i8 * -10 + i.key_down(egui::Key::S) as i8 * 10;
-                let turn =
-                    i.key_down(egui::Key::A) as i8 * -10 + i.key_down(egui::Key::D) as i8 * 10;
-
-                self.driverstation.modify_joystick(0, |joy| {
-                    if let Some(joy) = joy {
-                        if joy.get_axis(1).is_none() {
-                            joy.set_axis(1, 0).unwrap();
-                        }
-                        if joy.get_axis(4).is_none() {
-                            joy.set_axis(4, 0).unwrap();
-                        }
-                        joy.set_axis(1, joy.get_axis(1).unwrap().saturating_add(speed))
-                            .unwrap();
-                        joy.set_axis(4, joy.get_axis(4).unwrap().saturating_add(turn))
-                            .unwrap();
-                        if speed == 0 {
-                            joy.set_axis(1, 0).unwrap();
-                        }
-                        if turn == 0 {
-                            joy.set_axis(4, 0).unwrap();
-                        }
-                    } else {
-                        *joy = Some(Default::default());
-                    }
-                    // println!("{:#?}", joy);
-                });
+                println!("{:#?}", joy)
             });
+
+            // ui.input(|i| {
+            //     let speed =
+            //         i.key_down(egui::Key::W) as i8 * -10 + i.key_down(egui::Key::S) as i8 * 10;
+            //     let turn =
+            //         i.key_down(egui::Key::A) as i8 * -10 + i.key_down(egui::Key::D) as i8 * 10;
+
+            //     self.driverstation.modify_joystick(0, |joy| {
+            //         if let Some(joy) = joy {
+            //             if joy.get_axis(1).is_none() {
+            //                 joy.set_axis(1, 0).unwrap();
+            //             }
+            //             if joy.get_axis(4).is_none() {
+            //                 joy.set_axis(4, 0).unwrap();
+            //             }
+            //             joy.set_axis(1, joy.get_axis(1).unwrap().saturating_add(speed))
+            //                 .unwrap();
+            //             joy.set_axis(4, joy.get_axis(4).unwrap().saturating_add(turn))
+            //                 .unwrap();
+            //             if speed == 0 {
+            //                 joy.set_axis(1, 0).unwrap();
+            //             }
+            //             if turn == 0 {
+            //                 joy.set_axis(4, 0).unwrap();
+            //             }
+            //         } else {
+            //             *joy = Some(Default::default());
+            //         }
+            //         // println!("{:#?}", joy);
+            //     });
+            // });
 
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {

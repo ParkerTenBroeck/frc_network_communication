@@ -208,8 +208,8 @@ impl<'a> WriteToBuff<'a> for DriverstationToRobotPacket {
         buf.write_u8(self.core_data.control_code.to_bits())?;
         buf.write_u8(self.core_data.request_code.to_bits())?;
         buf.write_u8(self.core_data.station as u8)?;
-        // self.time_data.write_to_buf(buf)?;
-        // self.joystick_data.write_to_buf(buf)?;
+        self.time_data.write_to_buf(buf)?;
+        self.joystick_data.write_to_buf(buf)?;
 
         Ok(())
     }
