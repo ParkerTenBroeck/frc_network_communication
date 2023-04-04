@@ -1,22 +1,18 @@
 use std::{
+    net::IpAddr,
     ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
-    sync::{
-        atomic::{AtomicBool},
-        Arc,
-    },
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use robot_comm::common::error::RobotPacketParseError;
-use spin::{RwLock};
+use spin::{Mutex, RwLock};
 use tcp::RoborioTcp;
 use udp::RoborioUdp;
-use util::{
-    buffer_writter::{BufferWritterError},
-};
+use util::buffer_writter::BufferWritterError;
 
-mod udp;
 mod tcp;
+mod udp;
 
 #[derive(Default, Debug)]
 pub struct RoborioCom {
@@ -36,16 +32,19 @@ pub enum RoborioComError {
     UdpPacketTagReadError(RobotPacketParseError),
     UdpConnectionTimeoutError,
     ModeSwitchHookPanic(Box<dyn std::any::Any + Send>),
+    //tcp
+    TcpIoInitError(std::io::Error),
+    TcpIoSendError(std::io::Error),
+    TcpIoReceiveError(std::io::Error),
 }
-
 
 type ErrorHandler =
     Box<dyn Fn(&RoborioCom, RoborioComError) + Send + Sync + UnwindSafe + RefUnwindSafe + 'static>;
 
-
 struct RoborioCommon {
     request_info: AtomicBool,
     error_handler: RwLock<ErrorHandler>,
+    driverstation_ip: Mutex<Option<IpAddr>>,
 }
 
 impl std::fmt::Debug for RoborioCommon {
@@ -64,10 +63,10 @@ impl Default for RoborioCommon {
         Self {
             request_info: Default::default(),
             error_handler: RwLock::new(Box::new(default_error_handler)),
+            driverstation_ip: Default::default(),
         }
     }
 }
-
 
 impl RoborioCom {
     pub fn start_daemon<
@@ -94,8 +93,6 @@ impl RoborioCom {
     }
 }
 
-
-
 impl RoborioCom {
     pub fn set_error_handler(
         &self,
@@ -111,6 +108,10 @@ impl RoborioCom {
         std::mem::swap(&mut func, &mut *lock);
         drop(lock);
         func
+    }
+
+    pub fn get_driverstation_ip(&self) -> Option<IpAddr> {
+        *self.common.driverstation_ip.lock()
     }
 }
 

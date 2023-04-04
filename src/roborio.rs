@@ -263,12 +263,13 @@ impl eframe::App for RioUi {
                         .selectable_label(self.driverstation.is_estopped(), "ESTOP")
                         .clicked()
                     {
+                        self.driverstation.request_estop();
                         // self.driverstation
                         //     .observe_robot_estop(!self.driverstation.is_estopped())
                     }
 
                     if ui.button("Crash Driverstation").clicked() {
-                        self.driverstation.crash_driverstation()
+                        unsafe { self.driverstation.crash_driverstation() }
                     }
 
                     let mut battery_val = self.driverstation.get_observed_robot_voltage().to_f32();
@@ -623,7 +624,9 @@ fn idk() {
 
                     send_msg(Message {
                         kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-                            kind: net_comm::robot_to_driverstation::VersionInfo::Empty(Cow::Borrowed("")),
+                            kind: net_comm::robot_to_driverstation::VersionInfo::Empty(
+                                Cow::Borrowed(""),
+                            ),
                         },
                     });
 

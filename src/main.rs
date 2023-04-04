@@ -13,11 +13,15 @@ use std::{
 use crate::roborio::simulate_roborio;
 use eframe::egui::{self};
 use net_comm::driverstation::{
+    self,
     console_message::{Ignore, SystemConsoleOutput},
-    message_handler::MessageConsole, self,
+    message_handler::MessageConsole,
 };
 use robot_comm::{
-    common::{joystick::{NonNegU16, Joystick}, request_code::RobotRequestCode},
+    common::{
+        joystick::{Joystick, NonNegU16},
+        request_code::RobotRequestCode,
+    },
     driverstation::RobotComm,
 };
 
@@ -143,46 +147,48 @@ impl Pov {
 //     }
 // }
 
-pub fn controller(driverstation: Arc<RobotComm>){
+pub fn controller(driverstation: Arc<RobotComm>) {
     let mut gilrs = gilrs::Gilrs::new().unwrap();
     // gilrs.gamepads()
     let mut povs = [Pov::default(); 6];
-    loop{
-        while let Some(event) = gilrs.next_event(){
+    loop {
+        while let Some(event) = gilrs.next_event() {
             println!("{:#?}", event);
 
-            driverstation.modify_joystick(event.id.into(), |controller|{
-                if event.event == gilrs::EventType::Connected || controller.is_none(){
+            driverstation.modify_joystick(event.id.into(), |controller| {
+                if event.event == gilrs::EventType::Connected || controller.is_none() {
                     let mut default = Joystick::default();
 
-                    for _ in 0..6{
+                    for _ in 0..6 {
                         default.push_axis(0).unwrap();
                     }
-                    for _ in 0..10{
+                    for _ in 0..10 {
                         default.push_button(false).unwrap();
                     }
                     default.push_pov(NonNegU16::none()).unwrap();
 
                     *controller = Some(default);
-                }else if event.event == gilrs::EventType::Disconnected || event.event == gilrs::EventType::Dropped{
+                } else if event.event == gilrs::EventType::Disconnected
+                    || event.event == gilrs::EventType::Dropped
+                {
                     *controller = None;
                 }
-                if let Some(controller) = controller.as_mut(){
-                    match event.event{
-                        gilrs::EventType::ButtonChanged(butt, val, _) => {
-                            match butt{
-                                gilrs::Button::LeftTrigger2 => 
-                                    controller.set_axis(2, (val * 127.5 - 0.5) as i8).unwrap(),
-                                gilrs::Button::RightTrigger2 => 
-                                controller.set_axis(3, (val * 127.5 - 0.5) as i8).unwrap(),
-                                _ => {}
+                if let Some(controller) = controller.as_mut() {
+                    match event.event {
+                        gilrs::EventType::ButtonChanged(butt, val, _) => match butt {
+                            gilrs::Button::LeftTrigger2 => {
+                                controller.set_axis(2, (val * 127.5 - 0.5) as i8).unwrap()
                             }
-                        }
-                        gilrs::EventType::ButtonPressed(butt, _) |
-                        gilrs::EventType::ButtonReleased(butt, _) => {
+                            gilrs::Button::RightTrigger2 => {
+                                controller.set_axis(3, (val * 127.5 - 0.5) as i8).unwrap()
+                            }
+                            _ => {}
+                        },
+                        gilrs::EventType::ButtonPressed(butt, _)
+                        | gilrs::EventType::ButtonReleased(butt, _) => {
                             let val = matches!(event.event, gilrs::EventType::ButtonPressed(..));
 
-                            let index = match butt{
+                            let index = match butt {
                                 gilrs::Button::South => 0,
                                 gilrs::Button::East => 1,
                                 gilrs::Button::North => 3,
@@ -205,32 +211,31 @@ pub fn controller(driverstation: Arc<RobotComm>){
                                     povs[index].set_up(val);
                                     controller.set_pov(0, povs[index].to_val()).unwrap();
                                     return;
-                                },
+                                }
                                 gilrs::Button::DPadDown => {
                                     let index: usize = event.id.into();
                                     povs[index].set_down(val);
                                     controller.set_pov(0, povs[index].to_val()).unwrap();
                                     return;
-                                },
+                                }
                                 gilrs::Button::DPadLeft => {
                                     let index: usize = event.id.into();
                                     povs[index].set_left(val);
                                     controller.set_pov(0, povs[index].to_val()).unwrap();
                                     return;
-                                },
+                                }
                                 gilrs::Button::DPadRight => {
                                     let index: usize = event.id.into();
                                     povs[index].set_right(val);
                                     controller.set_pov(0, povs[index].to_val()).unwrap();
                                     return;
-                                },
-
+                                }
 
                                 // gilrs::Button::Unknown => todo!(),
-                                _ => {return}
+                                _ => return,
                             };
                             controller.set_button(index, val).unwrap();
-                        },
+                        }
                         // gilrs::EventType::ButtonReleased(_, _) => todo!(),
                         // gilrs::EventType::ButtonChanged(_, _, _) => todo!(),
                         gilrs::EventType::AxisChanged(axis, val, _) => {
@@ -252,7 +257,7 @@ pub fn controller(driverstation: Arc<RobotComm>){
                                 // gilrs::Axis::DPadY => todo!(),
                                 // gilrs::Axis::Unknown => todo!(),
                             }
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -269,8 +274,8 @@ pub mod roborio;
 
 fn main() {
     // bruh::run_bruh()
-    // simulate_roborio()
-    run_driverstation()
+    simulate_roborio()
+    // run_driverstation()
 }
 
 pub fn run_driverstation() {
@@ -278,20 +283,18 @@ pub fn run_driverstation() {
     // simulate_roborio();
 
     // let ipaddr =
-        // robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
+    // robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
     // let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
     // println!("FOUND ROBORIO: {:?}", ipaddr);
 
     let driverstation = RobotComm::new(Some(ipaddr));
     driverstation.start_new_thread();
-    driverstation.set_request_code(*RobotRequestCode::new().set_request_lib(true));
+    // driverstation.set_request_code(*RobotRequestCode::new().set_request_lib(true));
 
     {
         let driverstation = driverstation.clone();
-        _ = std::thread::spawn(move ||{
-            controller(driverstation)
-        });
+        _ = std::thread::spawn(move || controller(driverstation));
     }
 
     MessageConsole::create_new_thread(SystemConsoleOutput {}, ipaddr);
@@ -365,10 +368,8 @@ impl eframe::App for MyApp {
             {
                 self.driverstation.set_ds_attached(true);
             }
-            self.driverstation.modify_joystick(0, |joy|{
-
-                println!("{:#?}", joy)
-            });
+            self.driverstation
+                .modify_joystick(0, |joy| println!("{:#?}", joy));
 
             // ui.input(|i| {
             //     let speed =

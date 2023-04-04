@@ -7,15 +7,110 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'frc_netword_communication'",
+            "name": "Debug unit tests in library 'util'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=util"
+                ],
+                "filter": {
+                    "name": "util",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'robot_comm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=robot_comm"
+                ],
+                "filter": {
+                    "name": "robot_comm",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'net_comm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=net_comm"
+                ],
+                "filter": {
+                    "name": "net_comm",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'driverstation'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=driverstation"
+                ],
+                "filter": {
+                    "name": "driverstation",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'roborio'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=roborio"
+                ],
+                "filter": {
+                    "name": "roborio",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'frc_network_communication'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=frc_netword_communication",
-                    "--package=frc_netword_communication"
+                    "--bin=frc_network_communication",
+                    "--package=frc_network_communication"
                 ],
                 "filter": {
-                    "name": "frc_netword_communication",
+                    "name": "frc_network_communication",
                     "kind": "bin"
                 }
             },
@@ -25,16 +120,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'frc_netword_communication'",
+            "name": "Debug unit tests in executable 'frc_network_communication'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=frc_netword_communication",
-                    "--package=frc_netword_communication"
+                    "--bin=frc_network_communication",
+                    "--package=frc_network_communication"
                 ],
                 "filter": {
-                    "name": "frc_netword_communication",
+                    "name": "frc_network_communication",
                     "kind": "bin"
                 }
             },

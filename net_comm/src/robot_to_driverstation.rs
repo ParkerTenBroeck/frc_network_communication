@@ -333,7 +333,6 @@ impl<'a> CreateFromBuf<'a> for Message<'a> {
                                 buf.assert_n_zero(2)?;
                                 buf.assert_empty()?;
 
-                                
                                 VersionInfo::CANTalon(idk, can_id)
                             }
                             8 => {

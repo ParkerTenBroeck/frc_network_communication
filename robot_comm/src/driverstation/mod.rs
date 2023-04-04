@@ -251,7 +251,6 @@ impl RobotComm {
             //     continue;
             // }
             if let Some(sleep) = std::time::Duration::from_millis(20).checked_sub(packet_elapsed) {
-                
                 if drift < 0.0 {
                     if let Some(sleep) =
                         sleep.checked_sub(std::time::Duration::from_secs_f64(-drift))

@@ -1,17 +1,39 @@
-use std::{net::{IpAddr, SocketAddr, UdpSocket, Ipv4Addr}, sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, AtomicU32}, panic::{UnwindSafe, RefUnwindSafe}, ops::Deref};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
+    ops::Deref,
+    panic::{RefUnwindSafe, UnwindSafe},
+    sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize},
+};
 
 use net_comm::robot_voltage::RobotVoltage;
-use robot_comm::{driver_to_robot::{DriverstationToRobotCorePacketDate, reader::{DriverToRobotPacketReader, PacketTagAcceptor}}, common::{joystick::{Joystick, NonNegU16}, time_data::TimeData, control_code::ControlCode, request_code::{RobotRequestCode, DriverstationRequestCode}, alliance_station::AllianceStation}, robot_to_driver::{RobotToDriverstationPacket, RobotToDriverRumble, RobotToDriverDiskUsage, CpuUsage, RobotToDriverRamUsage, PdpPortReport, PdpPowerReport, RobotToDriverCanUsage, writter::RobotToDriverstaionPacketWritter, self}};
+use robot_comm::{
+    common::{
+        alliance_station::AllianceStation,
+        control_code::ControlCode,
+        joystick::{Joystick, NonNegU16},
+        request_code::{DriverstationRequestCode, RobotRequestCode},
+        time_data::TimeData,
+    },
+    driver_to_robot::{
+        reader::{DriverToRobotPacketReader, PacketTagAcceptor},
+        DriverstationToRobotCorePacketDate,
+    },
+    robot_to_driver::{
+        self, writter::RobotToDriverstaionPacketWritter, CpuUsage, PdpPortReport, PdpPowerReport,
+        RobotToDriverCanUsage, RobotToDriverDiskUsage, RobotToDriverRamUsage, RobotToDriverRumble,
+        RobotToDriverstationPacket,
+    },
+};
 use spin::{Mutex, RwLock};
-use util::{buffer_writter::{BufferWritter, SliceBufferWritter}, buffer_reader::BufferReader};
+use util::{
+    buffer_reader::BufferReader,
+    buffer_writter::{BufferWritter, SliceBufferWritter},
+};
 
-use crate::{RoborioComError, PossibleRcSelf, RoborioCom};
-
-
+use crate::{PossibleRcSelf, RoborioCom, RoborioComError};
 
 #[derive(Debug)]
 pub(super) struct RoborioUdp {
-    driverstation_ip: Mutex<Option<IpAddr>>,
     recv: Mutex<DriverstationToRobotCorePacketDate>,
     joystick_values: Mutex<[Option<Joystick>; 6]>,
     countdown: Mutex<Option<f32>>,
@@ -61,7 +83,6 @@ impl std::fmt::Debug for Hooks {
 impl Default for RoborioUdp {
     fn default() -> Self {
         Self {
-            driverstation_ip: Default::default(),
             recv: Default::default(),
             joystick_values: Default::default(),
             countdown: Default::default(),
@@ -120,7 +141,6 @@ impl Default for RoborioUdpTagFrequencies {
     }
 }
 
-
 struct UdpTagAcceptor<'a> {
     daemon: &'a RoborioCom,
 }
@@ -150,14 +170,19 @@ impl<'a> PacketTagAcceptor for UdpTagAcceptor<'a> {
 
 // this impl block is everything related to running the UDP connection
 impl RoborioCom {
-    pub(super) fn run_udp_daemon<T: 'static + Send + PossibleRcSelf + Deref<Target = Self>>(myself: &T) {
+    pub(super) fn run_udp_daemon<T: 'static + Send + PossibleRcSelf + Deref<Target = Self>>(
+        myself: &T,
+    ) {
         use std::sync::atomic::Ordering::Relaxed;
+
+        myself.udp.reset_con.store(2, Relaxed);
+
         while (*myself).exists_elsewhere() {
             let reset_kind = myself.udp.reset_con.swap(0, Relaxed);
             if reset_kind >= 2 {
                 myself.force_disable();
                 // reset out udp information every time reconnect
-                myself.udp.driverstation_ip.lock().take();
+                myself.common.driverstation_ip.lock().take();
                 myself.udp.packets_dropped.store(0, Relaxed);
                 myself.udp.connected.store(false, Relaxed);
                 myself.udp.bytes_received.store(0, Relaxed);
@@ -176,6 +201,7 @@ impl RoborioCom {
                             .set_brownout_protection(lock.control_code.is_brown_out_protection()),
                         ..Default::default()
                     };
+                    lock.status.set_is_roborio(true);
                 }
                 *myself.udp.countdown.lock() = None;
             }
@@ -245,7 +271,7 @@ impl RoborioCom {
                     } else if !self.udp.connected.load(Relaxed) {
                         // if we aren't already connected
                         send_addr = rec_addr.ip();
-                        *self.udp.driverstation_ip.lock() = Some(send_addr);
+                        *self.common.driverstation_ip.lock() = Some(send_addr);
                     }
 
                     let mut reader = BufferReader::new(recv_buf);
@@ -546,14 +572,10 @@ impl RoborioCom {
     // pub fn
 }
 
-
-
-
-
-
 // Public interface to UDP com ---------------------------------------------------
 
 impl RoborioCom {
+    
     pub fn reset_all_values(&self) {
         self.udp
             .reset_con
@@ -573,7 +595,12 @@ impl RoborioCom {
         );
     }
 
-    pub fn crash_driverstation(&self) {
+    /// This will literally crash the offical driverstation 
+    /// 
+    /// # Safety
+    /// 
+    /// uh well.. this is sorta unsafe behavior so dont call it unless you actually want to... well... crash driverstation :)
+    pub unsafe fn crash_driverstation(&self) {
         let mut lock = self.udp.observed_information.lock();
         lock.tag_comm_version = 0;
         lock.request = DriverstationRequestCode::from_bits(0xFF);
@@ -582,8 +609,10 @@ impl RoborioCom {
 
 //udp tings
 impl RoborioCom {
-    pub fn get_driverstation_ip(&self) -> Option<IpAddr> {
-        *self.udp.driverstation_ip.lock()
+
+    pub fn request_estop(&self){
+        self.udp.observed_information.lock().control_code.set_estop(true);
+        self.run_estop_hook();
     }
 
     pub fn request_time(&self) {
@@ -902,8 +931,6 @@ generate_hook_setters!(
     restart_code_hook, set_restart_code_hook, take_restart_code_hook
     restart_rio_hook, set_restart_rio_hook, take_restart_rio_hook
 );
-
-
 
 macro_rules! generate_udp_tag_data_frequencies_impl {
     ($($get_fn_name:ident, $set_fn_name:ident, $var_name:ident,)*) => {
