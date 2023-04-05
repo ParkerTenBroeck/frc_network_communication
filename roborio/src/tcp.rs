@@ -1,5 +1,5 @@
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::{TcpListener, TcpStream},
     ops::Deref,
     sync::atomic::{AtomicBool, AtomicU16},
@@ -12,11 +12,13 @@ use util::{
     super_small_vec::SuperSmallVec,
 };
 
-use crate::{PossibleRcSelf, RoborioCom};
+use crate::{PossibleRcSelf, RoborioCom, RoborioComError};
 
 #[derive(Default, Debug)]
 pub(super) struct RoborioTcp {
     reset_con: AtomicBool,
+
+    ds_tcp_connected: AtomicBool,
 
     message_number: AtomicU16,
 
@@ -50,9 +52,21 @@ pub struct ControllerInfo {
     pub js_type: JoystickType,
     pub is_xbox: bool,
     pub name: String,
-    pub axis: SuperSmallVec<u8, 11>,
+    pub axis: SuperSmallVec<AxisType, 11>,
     pub buttons: u8,
     pub povs: u8,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, FromPrimitive)]
+#[repr(u8)]
+pub enum AxisType{
+    XAxis = 0,
+    YAxis = 1,
+    ZAxis = 2,
+    TwistAxis = 3,
+    ThrottleAxis = 4,
+    #[num_enum(catch_all)]
+    Unknown(u8),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, FromPrimitive)]
@@ -86,99 +100,199 @@ impl RoborioCom {
         myself: &T,
     ) {
 
+        let connection_wait_timeout_ms = 100;
+
         while (*myself).exists_elsewhere() {
-            let mut buf = [0u8; 4096];
             let listener = match TcpListener::bind("0.0.0.0:1740") {
                 Ok(ok) => ok,
                 Err(err) => {
                     myself.report_error(crate::RoborioComError::TcpIoInitError(err));
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(std::time::Duration::from_millis(connection_wait_timeout_ms));
                     continue;
                 }
             };
             
 
-            let connections = std::sync::Mutex::new(Vec::new());
+            let connections = std::sync::Mutex::new(Vec::<TcpStream>::new());
             std::thread::scope(|s| {
+
                 s.spawn(||{
                     let mut buf = [0u8; 4096];
                     
                     while (*myself).exists_elsewhere(){
+                        if myself.tcp.ds_tcp_connected.load(atomic::Ordering::Relaxed){
+                            // TODO: read in data
+                            let mut buf = &buf[..0];
+
+                            for connection in &mut *connections.lock().unwrap(){
+                                
+                                // so uh idrk what the best chunk size to send is?? but a;dssf;lkjatlkj
+                                let chunk_size = 1024;
+                                while buf.len() > chunk_size{
+                                    let (s, f) = buf.split_at(chunk_size);
+                                    connection.write(s);
+                                    buf = f;
+                                }
+                                connection.write(buf);
+                            }
+                        }
 
                         std::thread::sleep(std::time::Duration::from_millis(20));
                     }
                 });
+                
+                // tcp packet recieving from ONLY the currently connected driverstation device. 
+                s.spawn(||{
+                    while (*myself).exists_elsewhere(){
+                        
+                        let mut lock = connections.lock().unwrap();
+                        let mut ds_stream = None;
+                        
+                        lock.retain(|stream: &TcpStream|{
+                            match stream.peer_addr().map(|ok|Some(ok.ip())){
+                                Ok(ok) => {
+                                    if ok == *myself.common.driverstation_ip.lock(){
+                                        match stream.try_clone() {
+                                            Ok(ok) => {
+                                                ds_stream = Some(ok);
+                                                true
+                                            },
+                                            Err(err) => {
+                                                myself.report_error(crate::RoborioComError::TcpIoInitError(err));
+                                                false
+                                            }
+                                        }
+                                    }else{
+                                        true
+                                    }
+                                },
+                                Err(err) => {
+                                    myself.report_error(crate::RoborioComError::TcpIoGeneralError(err));
+                                    false
+                                },
+                            }
+                        });
+                        drop(lock);
+                        
+                        if let Some(mut stream) = ds_stream{
+                            match myself.handle_stream_read(&mut stream, myself){
+                                Ok(_) => {
+                                    myself.tcp.ds_tcp_connected.store(true, atomic::Ordering::Release);
+                                    if myself.tcp.reset_con.swap(false, atomic::Ordering::Relaxed){
+                                        // drop all connections
+                                        connections.lock().unwrap().clear()
+                                    }
+                                },
+                                Err(err) => {
+                                    myself.tcp.ds_tcp_connected.store(true, atomic::Ordering::Release);
+                                    connections.lock().unwrap().retain(|s2|{
+                                        match (stream.peer_addr(), s2.peer_addr()){
+                                            (Ok(addr), Ok(addr2)) => addr != addr2,
+                                            _ => false,
+                                        }
+                                    });
+                                    myself.report_error(err);
+                                },
+                            }
+                        }else{
+                            std::thread::sleep(std::time::Duration::from_millis(connection_wait_timeout_ms));
+                        }
+                    }
+                });
+
                 // TODO: make this non blocking or timeout
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
-                            let stream2 = match stream.try_clone() {
-                                Ok(ok) => ok,
-                                Err(err) => {
-                                    continue;
-                                }
-                            };
-                            // s.spawn(move || myself.handle_stream_write(stream, myself));
-                            s.spawn(move || myself.handle_stream_read(stream2, myself));
                             connections.lock().unwrap().push(stream);
                         }
-                        Err(_) => todo!(),
+                        Err(err) => {
+                            myself.report_error(crate::RoborioComError::TcpIoInitError(err))
+                        },
                     }
                 }
             });
-            // for stream in listener.incoming() {
-            //     let stream = match stream{
-            //         Ok(stream) => stream,
-            //         Err(_) => todo!(),
-            //     }
-            // }
         }
     }
 
     fn handle_stream_read<T: 'static + Send + Sync + PossibleRcSelf + Deref<Target = Self>>(
         &self,
-        mut stream: TcpStream,
+        mut stream: &mut TcpStream,
         myself: &T,
-    ) {
+    ) -> Result<(), RoborioComError> {
         if let Err(err) = stream.set_nonblocking(false) {
-            panic!("{:#?}", err)
+            return Err(crate::RoborioComError::TcpIoInitError(err));
         }
-        let mut buf = [0u8; 4096];
-        while myself.exists_elsewhere() {
-            if let Err(err) = stream.read_exact(&mut buf[..2]) {
-                todo!("{:#?}", err);
-            }
+        if let Err(err) = stream.set_read_timeout(Some(std::time::Duration::from_millis(100))){
+            return Err(crate::RoborioComError::TcpIoInitError(err));
+        }
 
+        macro_rules! return_if_not_driverstation {
+            () => {
             // ignore incomming information unless its from the address our udp socket is currently receiving data from 
             match stream.peer_addr().map(|ok|Some(ok.ip())){
                 Ok(ok) => {
                     if ok != *self.common.driverstation_ip.lock(){
-                        continue;
+                        return Ok(());
                     }
                 },
-                Err(_) => {
-                    continue
+                Err(err) => {
+                    return Err(crate::RoborioComError::TcpIoGeneralError(err))
                 },
-            } 
+            }
+            };
+        }
+
+
+        let mut buf = [0u8; 0x10000];
+        while myself.exists_elsewhere() {
+            
+            if let Err(err) = stream.read_exact(&mut buf[..2]) {
+                if err.kind() == std::io::ErrorKind::WouldBlock{
+                    return_if_not_driverstation!();
+                    continue;
+                }else{
+                    return Err(crate::RoborioComError::TcpIoReceiveError(err));
+                }
+            }
 
             // we can unwrap because this will never panic
             let size = u16::from_be_bytes(buf[..2].try_into().unwrap());
+            
             if size == 0 {
+                println!("{size}");
                 continue;
             }
 
+
             let buf = &mut buf[..size as usize];
-            if let Err(err) = stream.read_exact(buf) {
-                todo!("{:#?}", err);
+            while myself.exists_elsewhere() {
+                if let Err(err) = stream.read_exact(buf) {
+                    if err.kind() == std::io::ErrorKind::WouldBlock{
+                        return_if_not_driverstation!();
+                        continue;
+                    }else{
+                        return Err(crate::RoborioComError::TcpIoReceiveError(err));
+                    }
+                }else{
+                    break;
+                }
             }
+
+
+            return_if_not_driverstation!();
+
+            self.tcp.ds_tcp_connected.store(true, atomic::Ordering::Release);
 
             let buf = BufferReader::new(buf);
 
             if let Err(err) = self.read_data(buf){
-                todo!("{:#?}", err);
+                myself.report_error(crate::RoborioComError::TcpPacketReadError(err))
             }
         }
+        Ok(())
     }
+
 
     fn read_data(&self, mut buf: BufferReader<'_>) -> Result<(), BufferReaderError> {
         match buf.read_u8()? {
@@ -194,7 +308,7 @@ impl RoborioCom {
                     axis: {
                         let mut axis = SuperSmallVec::new();
                         for _ in 0..buf.read_u8()? {
-                            axis.push(buf.read_u8()?)
+                            axis.push(AxisType::from_primitive(buf.read_u8()?))
                         }
                         axis
                     },
@@ -226,13 +340,6 @@ impl RoborioCom {
             }
         }
         Ok(())
-    }
-
-    fn handle_stream_write<T: 'static + Send + Sync + PossibleRcSelf + Deref<Target = Self>>(
-        &self,
-        mut stream: TcpStream,
-        myself: &T,
-    ) {
     }
 }
 
@@ -274,163 +381,32 @@ impl RoborioCom{
     pub fn get_controller_info(&self, controller: u8) -> Option<ControllerInfo>{
         self.tcp.controller_info.lock().get(controller as usize)?.clone()
     }
+
+    pub fn controller_is_xbox(&self, controller: u8) -> Option<bool>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.is_xbox)
+    }
+
+    pub fn controller_povs(&self, controller: u8) -> Option<u8>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.povs)
+    }
+
+    pub fn controller_buttons(&self, controller: u8) -> Option<u8>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.buttons)
+    }
+
+    pub fn controller_axis(&self, controller: u8) -> Option<u8>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.axis.len() as u8)
+    }
+
+    pub fn controller_axis_info(&self, controller: u8) -> Option<SuperSmallVec<AxisType, 11>>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.axis.clone())
+    }
+
+    pub fn controller_type(&self, controller: u8) -> Option<JoystickType>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.js_type)
+    }
+
+    pub fn controller_name(&self, controller: u8) -> Option<String>{
+        self.tcp.controller_info.lock().get(controller as usize)?.as_ref().map(|c|c.name.clone())
+    }
 }
-
-// println!("Connection established!");
-// // stream.set_read_timeout(Some(std::time::Duration::from_micros(0))).unwrap();
-
-// let mut res = || -> Result<(), Box<dyn std::error::Error>> {
-//     while myself.exists_elsewhere() {
-//         let mut send_info = false;
-
-//         stream.set_nonblocking(true).unwrap();
-//         while let Ok(size) = stream.peek(&mut buf) {
-//             if size < 2 {
-//                 break;
-//             }
-//             let packet_size = BufferReader::new(&buf).read_u16()? as usize;
-//             if size - 2 < packet_size {
-//                 break;
-//             }
-//             stream.read_exact(&mut buf[0..packet_size + 2])?;
-//             if packet_size == 0 {
-//                 send_info = true;
-//                 break;
-//             }
-
-//             let mut buf = BufferReader::new(&buf);
-
-//             let mut buf = buf.read_known_length_u16().unwrap();
-//             match buf.read_u8()? {
-//                 0x02 => {
-//                     let index = buf.read_u8()?;
-//                     let is_xbox = buf.read_u8()? == 1;
-
-//                     // let num_axis;
-//                     let controller = if buf.read_u8()? == 1 {
-//                         ControllerInfo::Some {
-//                             id: index,
-//                             is_xbox,
-//                             js_type: JoystickType::HIDGamepad,
-//                             name: Cow::Borrowed(buf.read_short_str()?),
-//                             axis: {
-//                                 let mut axis = SuperSmallVec::new();
-//                                 for _ in 0..buf.read_u8()? {
-//                                     axis.push(buf.read_u8()?)
-//                                 }
-//                                 axis
-//                             },
-//                             buttons: buf.read_u8()?,
-//                             povs: buf.read_u8()?,
-//                         }
-//                     } else {
-//                         ControllerInfo::None { id: index }
-//                     };
-//                     println!("{controller:#?}");
-//                 }
-//                 0x07 => {
-//                     // match info
-//                     let event_name = buf.read_short_str()?;
-//                     // 0 None, 1 Practis, 2 quals, 3 elims
-//                     let match_type = buf.read_u8()?;
-//                     let match_number = buf.read_u16()?;
-//                     let replay_number = buf.read_u8()?;
-//                     println!("0x07 => event name: {event_name}, match: {match_type}, match#: {match_number}, replay#: {replay_number}");
-//                 }
-//                 0x0E => {
-//                     //Game Data
-//                     println!("GameData => {:?}", buf.read_str(buf.remaining_buf_len())?);
-//                 }
-//                 val => {
-//                     println!("Unknown data tag: {val:02X}")
-//                 }
-//             }
-//         }
-//         let mut bufw = SliceBufferWritter::new(&mut buf);
-
-//         stream.set_nonblocking(false).unwrap();
-//         let mut send_msg = |mut msg: Message| {
-//             let mut bufws = bufw.create_u16_size_guard().unwrap();
-//             msg.set_msg_num(message_num);
-//             message_num = message_num.wrapping_add(1);
-//             msg.set_ms(
-//                 std::time::SystemTime::now()
-//                     .duration_since(std::time::SystemTime::UNIX_EPOCH)
-//                     .unwrap()
-//                     .as_millis() as u32,
-//             );
-//             msg.write_to_buf(&mut bufws).unwrap();
-//             // bufws.write((8 -(bufws.curr_buf_len() + 2) % 8) %8).unwrap();
-//             drop(bufws);
-
-//             // stream.write_all(bufw.curr_buf()).unwrap();
-//             // bufw.reset();
-//         };
-//         // println!("{send_info}");
-//         if true {
-//             send_msg(Message {
-//                 kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-//                     kind: net_comm::robot_to_driverstation::VersionInfo::ImageVersion(
-//                         "Holy Cow It's Rust".into(),
-//                     ),
-//                 },
-//             });
-
-//             send_msg(Message {
-//                 kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-//                     kind: net_comm::robot_to_driverstation::VersionInfo::LibCVersion(
-//                         "Lib :3 Rust".into(),
-//                     ),
-//                 },
-//             });
-
-//             send_msg(Message {
-//                 kind: net_comm::robot_to_driverstation::MessageKind::VersionInfo {
-//                     kind: net_comm::robot_to_driverstation::VersionInfo::Empty(Cow::Borrowed("")),
-//                 },
-//             });
-
-//             // send_msg(Message {
-//             //     kind: net_comm::robot_to_driverstation::MessageKind::UnderlineAnd5VDisable {
-//             //         disable_5v: 123,
-//             //         second_top_signal: 2,
-//             //         third_top_signal: 2,
-//             //         top_signal: 2,
-//             //     },
-//             // });
-
-//             // send_msg(Message {
-//             //     kind: net_comm::robot_to_driverstation::MessageKind::DisableFaults {
-//             //         comms: 69,
-//             //         fault_12v: 55,
-//             //     },
-//             // });
-
-//             // send_msg(Message {
-//             //     kind: MessageKind::RailFaults {
-//             //         short_3_3v: 12,
-//             //         short_5v: 5,
-//             //         short_6v: 6,
-//             //     },
-//             // })
-//         }
-//         // for _ in 0..20{
-
-//         // send_msg(Message::info("Hello!"));
-//         //}
-//         // send_msg(Message::warn(
-//         //     "abc",
-//         //     Warnings::Unknown(0x12345678),
-//         //         "defg", "hijklmnop"
-//         // ));
-//         // send_msg(Message::error("This is a Error :0", Errors::Error, "Bruh", ""));
-
-//         stream.write_all(bufw.curr_buf())?;
-
-//         // println!("Sent Message!");
-
-//         std::thread::sleep(std::time::Duration::from_millis(10));
-//     }
-//     Ok(())
-// };
-// println!("{:#?}", res());

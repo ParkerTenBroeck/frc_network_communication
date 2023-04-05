@@ -320,8 +320,8 @@ impl<'a> WriteToBuff<'a> for Joystick {
         }
 
         buf.write_u8(self.buttons_len())?;
-        for p in (0..((self.buttons_len() + 7) / 8)).rev() {
-            buf.write_u8((self.buttons >> (p * 8)) as u8)?;
+        for i in (0..((self.buttons_len() + 7) / 8)).rev() {
+            buf.write_u8((self.buttons >> (i * 8)) as u8)?;
         }
 
         buf.write_u8(self.povs.len() as u8)?;

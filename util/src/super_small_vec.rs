@@ -87,9 +87,7 @@ impl<T, const MAX: usize> Default for SuperSmallVec<T, MAX> {
 
 impl<T: std::fmt::Debug, const MAX: usize> std::fmt::Debug for SuperSmallVec<T, MAX> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SmallSlice")
-            .field("data", &self.deref())
-            .finish()
+        f.debug_list().entries(self.deref().iter()).finish()
     }
 }
 

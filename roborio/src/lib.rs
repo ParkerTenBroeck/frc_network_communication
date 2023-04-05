@@ -9,7 +9,7 @@ use robot_comm::common::error::RobotPacketParseError;
 use spin::{Mutex, RwLock};
 use tcp::RoborioTcp;
 use udp::RoborioUdp;
-use util::buffer_writter::BufferWritterError;
+use util::{buffer_writter::BufferWritterError, buffer_reader::BufferReaderError};
 
 mod tcp;
 mod udp;
@@ -36,6 +36,8 @@ pub enum RoborioComError {
     TcpIoInitError(std::io::Error),
     TcpIoSendError(std::io::Error),
     TcpIoReceiveError(std::io::Error),
+    TcpIoGeneralError(std::io::Error),
+    TcpPacketReadError(BufferReaderError),
 }
 
 type ErrorHandler =

@@ -12,7 +12,7 @@ use robot_comm::{
         control_code::ControlCode,
         joystick::{Joystick, NonNegU16},
         request_code::{DriverstationRequestCode, RobotRequestCode},
-        time_data::TimeData,
+        time_data::TimeData, roborio_status_code::RobotStatusCode,
     },
     driver_to_robot::{
         reader::{DriverToRobotPacketReader, PacketTagAcceptor},
@@ -313,7 +313,7 @@ impl RoborioCom {
                     {
                         // not sure if this should be 1 or 2, either way we should force disable
                         self.force_disable();
-                        self.udp.reset_con.store(1, Relaxed);
+                        self.udp.reset_con.store(2, Relaxed);
                         self.udp.connected.store(false, Relaxed);
                         self.report_error(RoborioComError::UdpConnectionTimeoutError);
                         break;
@@ -653,6 +653,10 @@ impl RoborioCom {
 
     pub fn get_observed_robot_voltage(&self) -> RobotVoltage {
         self.udp.observed_information.lock().battery
+    }
+
+    pub fn get_observed_status(&self) -> RobotStatusCode {
+        self.udp.observed_information.lock().status
     }
 
     pub fn observe_robot_teleop(&self) {

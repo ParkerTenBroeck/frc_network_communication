@@ -8,7 +8,6 @@ use std::{
 
 use eframe::{
     egui::{self, Margin, RichText, Slider, TextEdit, Widget},
-    epaint::mutex::MutexGuard,
 };
 use net_comm::{robot_to_driverstation::Message, robot_voltage::RobotVoltage};
 use roborio::RoborioCom;
@@ -17,7 +16,7 @@ use robot_comm::util::{
     buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
     super_small_vec::SuperSmallVec,
 };
-use sysinfo::{CpuExt, SystemExt};
+use sysinfo::{CpuExt, SystemExt, NetworkExt};
 
 #[derive(Debug)]
 pub enum ControllerInfo<'a> {
@@ -61,24 +60,250 @@ pub enum JoystickType {
 
 struct RioUi {
     driverstation: Arc<RoborioCom>,
-    joystick_selected: usize,
+    udp: UdpUi,
+    tcp: TcpUi,
+    tab: usize,
 }
 
-impl RioUi {
-    fn new(driverstation: Arc<RoborioCom>) -> Self {
-        Self {
-            driverstation,
-            joystick_selected: 0,
+#[derive(Default)]
+struct UdpUi{
+    joystick_selected: usize,
+}
+impl UdpUi {
+    fn show(&mut self, ui: &mut egui::Ui, driverstation: &RoborioCom) {
+        
+        let control_code = driverstation.get_control_code();
+        let request_code = driverstation.get_request_code();
+
+        if control_code.is_disabled() {
+            driverstation.observe_robot_disabled();
+        } else if control_code.is_autonomus() {
+            driverstation.observe_robot_autonomus()
+        } else if control_code.is_teleop() {
+            driverstation.observe_robot_teleop()
+        } else if control_code.is_test() {
+            driverstation.observe_robot_test()
         }
+
+        if request_code.should_restart_roborio_code() {
+            // driverstation.observe_restart_roborio_code();
+        }
+
+        if ui.selectable_label(driverstation.get_observed_status().has_robot_code(), "Has Robot Code").clicked(){
+            driverstation.observe_robot_code(!driverstation.get_observed_status().has_robot_code())
+        }
+        // driverstation.request_disable();
+        // driverstation
+        //     .observe_robot_code(!request_code.should_restart_roborio_code());
+
+        // // Plot::new("Bruh").view_aspect(2.0).show(ui, |plot_ui| {});
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(if driverstation.is_connected() {
+                    "Connected"
+                } else {
+                    "Disconnected"
+                });
+
+                if ui.button("Reset Con").clicked() {
+                    driverstation.reset_all_values();
+                }
+
+                if ui
+                    .selectable_label(
+                        driverstation.get_request_disable(),
+                        "Request Disable",
+                    )
+                    .clicked()
+                {
+                    driverstation.request_disable()
+                }
+
+                if ui
+                    .selectable_label(driverstation.get_request_time(), "Request Time")
+                    .clicked()
+                {
+                    driverstation.request_time()
+                }
+
+                if ui
+                    .selectable_label(driverstation.is_brownout_protection(), "Brownout")
+                    .clicked()
+                {
+                    driverstation
+                        .observe_robot_brownout(!driverstation.is_brownout_protection())
+                }
+                if ui
+                    .selectable_label(driverstation.is_estopped(), "ESTOP")
+                    .clicked()
+                {
+                    driverstation.request_estop();
+                    // driverstation
+                    //     .observe_robot_estop(!driverstation.is_estopped())
+                }
+
+                if ui.button("Crash Driverstation").clicked() {
+                    unsafe { driverstation.crash_driverstation() }
+                }
+
+                let mut battery_val = driverstation.get_observed_robot_voltage().to_f32();
+
+                if ui
+                    .add(
+                        Slider::new(&mut battery_val, 0.0..=14.0)
+                            .smart_aim(false)
+                            .text("Battery Voltage"),
+                    )
+                    .changed()
+                {
+                    driverstation
+                        .observe_robot_voltage(RobotVoltage::from_f32(battery_val))
+                }
+                egui::Frame {
+                    stroke: ui.style().visuals.window_stroke,
+                    inner_margin: Margin::same(2.0),
+                    ..Default::default()
+                }
+                .show(ui, |ui| {
+                    egui::Grid::new("my_grid")
+                        .num_columns(2)
+                        .spacing([40.0, 4.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label("Packets Dropped");
+                            ui.label(driverstation.get_udp_packets_dropped().to_string());
+                            ui.end_row();
+
+                            ui.label("Packets Send");
+                            ui.label(driverstation.get_udp_packets_sent().to_string());
+                            ui.end_row();
+
+                            ui.label("Bytes Sent");
+                            ui.label(driverstation.get_udp_bytes_sent().to_string());
+                            ui.end_row();
+
+                            ui.label("Packets Received");
+                            ui.label(driverstation.get_udp_packets_received().to_string());
+                            ui.end_row();
+
+                            ui.label("Bytes Received");
+                            ui.label(driverstation.get_udp_bytes_received().to_string());
+                            ui.end_row();
+                        });
+                });
+
+                ui.add_space(1.0);
+
+                if let Some(countdown) = driverstation.get_countdown() {
+                    ui.label(format!("Countdown: {countdown}s"));
+                } else {
+                    ui.label("Countdown: None");
+                }
+
+                let timedata = driverstation.get_time();
+                ui.label(format!("Timedata: {:#?}", timedata));
+
+                let control_code = driverstation.get_control_code();
+
+                if control_code.is_disabled() {
+                    ui.label("mode: disabled");
+                } else if control_code.is_teleop() {
+                    ui.label("mode: teleop");
+                } else if control_code.is_autonomus() {
+                    ui.label("mode: autonomus");
+                } else if control_code.is_test() {
+                    ui.label("mode: test");
+                } else {
+                    ui.label("mode: unknwon?");
+                }
+
+                ui.label(format!(
+                    "Alliance Station: {:#?}",
+                    driverstation.get_alliance_station()
+                ));
+
+                ui.label(format!("{:#?}", driverstation.get_request_code()));
+                ui.label(format!("{:#?}", driverstation.get_control_code()));
+
+            });
+
+            ui.separator();
+
+            self.show_tags(ui, driverstation);
+            ui.separator();
+
+            ui.vertical(|ui| {
+                for i in 0..6 {
+                    if ui
+                        .selectable_label(
+                            self.joystick_selected == i,
+                            &format!("Joystick {}", i + 1),
+                        )
+                        .clicked()
+                    {
+                        self.joystick_selected = i;
+                    }
+                }
+            });
+
+            ui.vertical(|ui| {
+                if let Some(joy) = driverstation.get_joystick(self.joystick_selected) {
+                    if joy.axis_len() == 0 && joy.povs_len() == 0 && joy.buttons_len() == 0 {
+                        ui.label("Empty? (reserved but not found)");
+                    }
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            for i in 0..joy.buttons_len() {
+                                _ = ui.selectable_label(
+                                    joy.get_button(i).unwrap(),
+                                    format!("axis_{}", i),
+                                );
+                            }
+                            for i in 0..joy.povs_len() {
+                                ui.label(format!(
+                                    "pov_{}: {}",
+                                    i,
+                                    joy.get_pov(i)
+                                        .unwrap()
+                                        .get()
+                                        .map(|val| val.to_string())
+                                        .unwrap_or("None".to_owned())
+                                ));
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            for i in 0..joy.axis_len() {
+                                ui.add(
+                                    egui::widgets::ProgressBar::new(
+                                        (joy.get_axis(i).unwrap() as f32 / 128.0 * 0.5) + 0.5,
+                                    )
+                                    .text(
+                                        RichText::new(format!(
+                                            "axis_{:+.4} {}",
+                                            joy.get_axis(i).unwrap(),
+                                            i
+                                        ))
+                                        .monospace(),
+                                    ),
+                                );
+                            }
+                        });
+                    });
+                } else {
+                    ui.label("Not connected");
+                }
+            });
+        });
     }
 
-    fn show_tags(&self, ui: &mut egui::Ui) {
+
+    fn show_tags(&self, ui: &mut egui::Ui, driverstation: &RoborioCom) {
         ui.vertical(|ui| {
             ui.collapsing("Disk Usage", |ui| {
                 ui.label("Disk Usage: Bytes free");
                 let mut disk = format!(
                     "{}",
-                    self.driverstation
+                    driverstation
                         .get_disk_usage()
                         .map(|f| f.bytes_free)
                         .unwrap_or(0)
@@ -86,7 +311,7 @@ impl RioUi {
                 let response = TextEdit::singleline(&mut disk).desired_width(150.0).ui(ui);
                 if response.changed() {
                     if let Ok(val) = str::parse(&disk) {
-                        self.driverstation.set_disk_usage(Some(
+                        driverstation.set_disk_usage(Some(
                             robot_comm::robot_to_driver::RobotToDriverDiskUsage { bytes_free: val },
                         ));
                     }
@@ -99,7 +324,7 @@ impl RioUi {
                 ui.label("Ram Usage: Bytes free");
                 let mut ram = format!(
                     "{}",
-                    self.driverstation
+                    driverstation
                         .get_ram_usage()
                         .map(|f| f.bytes_free)
                         .unwrap_or(0)
@@ -107,7 +332,7 @@ impl RioUi {
                 let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
                 if response.changed() {
                     if let Ok(val) = str::parse(&ram) {
-                        self.driverstation.set_ram_usage(Some(
+                        driverstation.set_ram_usage(Some(
                             robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val },
                         ));
                     }
@@ -127,7 +352,7 @@ impl RioUi {
             ui.collapsing("Pdp Power Report", |ui| {
                 let mut ram = format!(
                     "{}",
-                    self.driverstation
+                    driverstation
                         .get_ram_usage()
                         .map(|f| f.bytes_free)
                         .unwrap_or(0)
@@ -135,7 +360,7 @@ impl RioUi {
                 let response = TextEdit::singleline(&mut ram).desired_width(150.0).ui(ui);
                 if response.changed() {
                     if let Ok(val) = str::parse(&ram) {
-                        self.driverstation.set_ram_usage(Some(
+                        driverstation.set_ram_usage(Some(
                             robot_comm::robot_to_driver::RobotToDriverRamUsage { bytes_free: val },
                         ));
                     }
@@ -152,6 +377,59 @@ impl RioUi {
                 // }
             });
         });
+    }
+}
+
+#[derive(Default)]
+struct TcpUi{
+    joystick_selected: usize,
+}
+impl TcpUi {
+    fn show(&mut self, ui: &mut egui::Ui, driverstation: &RoborioCom) {
+        ui.horizontal(|ui|{
+            ui.vertical(|ui|{
+                if let Some(gamedata) = driverstation.get_game_data(){
+                    ui.label(format!("gamedata: {:#?}", gamedata));
+                }else{
+                    ui.label("gamedata: None");
+                }
+
+                if let Some(matchinfo) = driverstation.get_match_info(){
+                    ui.label(format!("matchinfo: {:#?}", matchinfo));
+                }else{
+                    ui.label("matchinfo: None");
+                }
+
+                ui.separator();
+                ui.horizontal(|ui|{
+                    for i in 0..6{
+                        if ui.selectable_label(i == self.joystick_selected, format!("joystick_{}", i + 1)).clicked(){
+                            self.joystick_selected = i;
+                        }
+                    }
+                });
+                if let Some(controller_info) = driverstation.get_controller_info(self.joystick_selected as u8){
+                    ui.label(format!("contorller info: {:#?}", controller_info))
+                }else{
+                    ui.label("contriller info: None")
+                }
+            });
+            ui.separator();
+            ui.vertical(|ui|{
+
+            });
+        });
+    }
+}
+
+impl RioUi {
+    fn new(driverstation: Arc<RoborioCom>) -> Self {
+        Self {
+            driverstation,
+            tab: Default::default(),
+            udp: Default::default(),
+            tcp: Default::default(),
+        }
     }
 }
 
@@ -187,11 +465,30 @@ impl eframe::App for RioUi {
         egui::TopBottomPanel::top("Bruh").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 sysinfo(|sysinfo| {
+                    
+                    if ui.selectable_label(self.tab == 0, "UDP").clicked(){
+                        self.tab = 0;
+                    }
+                    if ui.selectable_label(self.tab == 1, "TCP").clicked(){
+                        self.tab = 1;
+                    }
+
                     ui.label(format!(
                         "CPU: {:.2}%",
                         sysinfo.global_cpu_info().cpu_usage()
                     ));
-                    // ui.label(format!())
+                    for (name, usage) in sysinfo.networks(){
+                        ui.label(format!(
+                            "Network: {} rx{}, tx{}",
+                            name,
+                            usage.received(),
+                            usage.transmitted()
+                        ));
+                        // usage.
+                        
+                    }
+                    
+                    
                 });
                 ui.add_space(2.0);
                 // for (name, info) in self.sysinfo.networks(){
@@ -202,306 +499,15 @@ impl eframe::App for RioUi {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            let control_code = self.driverstation.get_control_code();
-            let request_code = self.driverstation.get_request_code();
-
-            if control_code.is_disabled() {
-                self.driverstation.observe_robot_disabled();
-            } else if control_code.is_autonomus() {
-                self.driverstation.observe_robot_autonomus()
-            } else if control_code.is_teleop() {
-                self.driverstation.observe_robot_teleop()
-            } else if control_code.is_test() {
-                self.driverstation.observe_robot_test()
-            }
-
-            if request_code.should_restart_roborio_code() {
-                // self.driverstation.observe_restart_roborio_code();
-            }
-            // self.driverstation.request_disable();
-            self.driverstation
-                .observe_robot_code(!request_code.should_restart_roborio_code());
-
-            // // Plot::new("Bruh").view_aspect(2.0).show(ui, |plot_ui| {});
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label(if self.driverstation.is_connected() {
-                        "Connected"
-                    } else {
-                        "Disconnected"
-                    });
-
-                    if ui.button("Reset Con").clicked() {
-                        self.driverstation.reset_all_values();
+            ui.push_id(self.tab, |ui|{
+                match self.tab{
+                    0 => self.udp.show(ui, &self.driverstation),
+                    1 => self.tcp.show(ui, &self.driverstation),
+                    _ => {
+                        ui.label("Bruh how did you even get to this tab, kinda impressive ngl");
                     }
-
-                    if ui
-                        .selectable_label(
-                            self.driverstation.get_request_disable(),
-                            "Request Disable",
-                        )
-                        .clicked()
-                    {
-                        self.driverstation.request_disable()
-                    }
-
-                    if ui
-                        .selectable_label(self.driverstation.get_request_time(), "Request Time")
-                        .clicked()
-                    {
-                        self.driverstation.request_time()
-                    }
-
-                    if ui
-                        .selectable_label(self.driverstation.is_brownout_protection(), "Brownout")
-                        .clicked()
-                    {
-                        self.driverstation
-                            .observe_robot_brownout(!self.driverstation.is_brownout_protection())
-                    }
-                    if ui
-                        .selectable_label(self.driverstation.is_estopped(), "ESTOP")
-                        .clicked()
-                    {
-                        self.driverstation.request_estop();
-                        // self.driverstation
-                        //     .observe_robot_estop(!self.driverstation.is_estopped())
-                    }
-
-                    if ui.button("Crash Driverstation").clicked() {
-                        unsafe { self.driverstation.crash_driverstation() }
-                    }
-
-                    let mut battery_val = self.driverstation.get_observed_robot_voltage().to_f32();
-
-                    if ui
-                        .add(
-                            Slider::new(&mut battery_val, 0.0..=14.0)
-                                .smart_aim(false)
-                                .text("Battery Voltage"),
-                        )
-                        .changed()
-                    {
-                        self.driverstation
-                            .observe_robot_voltage(RobotVoltage::from_f32(battery_val))
-                    }
-                    egui::Frame {
-                        stroke: ui.style().visuals.window_stroke,
-                        inner_margin: Margin::same(2.0),
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
-                        egui::Grid::new("my_grid")
-                            .num_columns(2)
-                            .spacing([40.0, 4.0])
-                            .striped(true)
-                            .show(ui, |ui| {
-                                ui.label("Packets Dropped");
-                                ui.label(self.driverstation.get_udp_packets_dropped().to_string());
-                                ui.end_row();
-
-                                ui.label("Packets Send");
-                                ui.label(self.driverstation.get_udp_packets_sent().to_string());
-                                ui.end_row();
-
-                                ui.label("Bytes Sent");
-                                ui.label(self.driverstation.get_udp_bytes_sent().to_string());
-                                ui.end_row();
-
-                                ui.label("Packets Received");
-                                ui.label(self.driverstation.get_udp_packets_received().to_string());
-                                ui.end_row();
-
-                                ui.label("Bytes Received");
-                                ui.label(self.driverstation.get_udp_bytes_received().to_string());
-                                ui.end_row();
-                            });
-                    });
-                    // ui.separator();
-                    // ui.separator();
-
-                    // ui.label(format!(
-                    //     "Packets Dropped: {}",
-                    //     self.driverstation.get_udp_packets_dropped()
-                    // ));
-                    // ui.label(format!(
-                    //     "Packets Sent: {}",
-                    //     self.driverstation.get_udp_packets_sent()
-                    // ));
-                    // ui.label(format!(
-                    //     "Bytes Send: {}",
-                    //     self.driverstation.get_udp_bytes_sent()
-                    // ));
-                    // ui.label(format!(
-                    //     "Packets Received: {}",
-                    //     self.driverstation.get_udp_packets_received()
-                    // ));
-                    // ui.label(format!(
-                    //     "Bytes Received: {}",
-                    //     self.driverstation.get_udp_bytes_received()
-                    // ));
-
-                    ui.add_space(1.0);
-
-                    if let Some(countdown) = self.driverstation.get_countdown() {
-                        ui.label(format!("Countdown: {countdown}s"));
-                    } else {
-                        ui.label("Countdown: None");
-                    }
-
-                    let timedata = self.driverstation.get_time();
-                    ui.label(format!("Timedata: {:#?}", timedata));
-
-                    let control_code = self.driverstation.get_control_code();
-
-                    if control_code.is_disabled() {
-                        ui.label("mode: disabled");
-                    } else if control_code.is_teleop() {
-                        ui.label("mode: teleop");
-                    } else if control_code.is_autonomus() {
-                        ui.label("mode: autonomus");
-                    } else if control_code.is_test() {
-                        ui.label("mode: test");
-                    } else {
-                        ui.label("mode: unknwon?");
-                    }
-
-                    ui.label(format!(
-                        "Alliance Station: {:#?}",
-                        self.driverstation.get_alliance_station()
-                    ));
-
-                    ui.label(format!("{:#?}", self.driverstation.get_request_code()));
-                    ui.label(format!("{:#?}", self.driverstation.get_control_code()));
-
-                    // if ui
-                    //     .selectable_label(control_code.is_brown_out_protection(), "ESTOPED")
-                    //     .changed()
-                    // {
-                    //     driverstation
-                    //         .observe_robot_brownout(!control_code.is_brown_out_protection());
-                    // }
-                });
-
-                ui.separator();
-
-                self.show_tags(ui);
-                ui.separator();
-
-                // let last_core = self.driverstation.get_last_core_data();
-                // ui.vertical(|ui| {
-                //     ui.label(&format!("{:#?}", last_core.control_code));
-                //     ui.label(&format!("{:#?}", last_core.station));
-                //     ui.label(&format!("{:#?}", last_core.request_code));
-
-                //     if ui
-                //         .add(
-                //             egui::Slider::new(&mut self.battery_voltage, 0.0..=13.5)
-                //                 .show_value(true),
-                //         )
-                //         .changed()
-                //     {
-                //         self.driverstation
-                //             .observe_robot_voltage(RobotVoltage::from_f32(self.battery_voltage));
-                //     }
-                //     {
-                //         // self.ss = last_core.tag_comm_version;
-                //         let mut status = self.driverstation.get_observe();
-                //         let mut str = format!("{:08b}", status.to_bits());
-                //         if ui.text_edit_singleline(&mut str).changed() {
-                //             if let Ok(val) = u8::from_str_radix(&str, 2) {
-                //                 status = RobotStatusCode::from_bits(val);
-                //                 self.driverstation.set_observe(status);
-                //             }
-                //         }
-                //         ui.label(&format!("{:#?}", status));
-                //     }
-                //     {
-                //         let mut control = self.driverstation.get_control();
-                //         let mut str = format!("{:08b}", control.to_bits());
-                //         if ui.text_edit_singleline(&mut str).changed() {
-                //             if let Ok(val) = u8::from_str_radix(&str, 2) {
-                //                 control = ControlCode::from_bits(val);
-                //                 self.driverstation.set_control(control);
-                //             }
-                //         }
-                //         ui.label(&format!("{:#?}", control));
-                //     }
-                //     {
-                //         let mut request = self.driverstation.get_request();
-                //         let mut str = format!("{:08b}", request.to_bits());
-                //         if ui.text_edit_singleline(&mut str).changed() {
-                //             if let Ok(val) = u8::from_str_radix(&str, 2) {
-                //                 request = DriverstationRequestCode::from_bits(val);
-                //                 self.driverstation.set_request(request);
-                //             }
-                //         }
-                //         ui.label(&format!("{:#?}", request));
-                //     }
-                // });
-                ui.vertical(|ui| {
-                    for i in 0..6 {
-                        if ui
-                            .selectable_label(
-                                self.joystick_selected == i,
-                                &format!("Joystick {}", i + 1),
-                            )
-                            .clicked()
-                        {
-                            self.joystick_selected = i;
-                        }
-                    }
-                });
-
-                ui.vertical(|ui| {
-                    if let Some(joy) = self.driverstation.get_joystick(self.joystick_selected) {
-                        if joy.axis_len() == 0 && joy.povs_len() == 0 && joy.buttons_len() == 0 {
-                            ui.label("Empty? (reserved but not found)");
-                        }
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                for i in 0..joy.buttons_len() {
-                                    _ = ui.selectable_label(
-                                        joy.get_button(i).unwrap(),
-                                        format!("axis_{}", i),
-                                    );
-                                }
-                                for i in 0..joy.povs_len() {
-                                    ui.label(format!(
-                                        "pov_{}: {}",
-                                        i,
-                                        joy.get_pov(i)
-                                            .unwrap()
-                                            .get()
-                                            .map(|val| val.to_string())
-                                            .unwrap_or("None".to_owned())
-                                    ));
-                                }
-                            });
-                            ui.vertical(|ui| {
-                                for i in 0..joy.axis_len() {
-                                    ui.add(
-                                        egui::widgets::ProgressBar::new(
-                                            (joy.get_axis(i).unwrap() as f32 / 128.0 * 0.5) + 0.5,
-                                        )
-                                        .text(
-                                            RichText::new(format!(
-                                                "axis_{:+.4} {}",
-                                                joy.get_axis(i).unwrap(),
-                                                i
-                                            ))
-                                            .monospace(),
-                                        ),
-                                    );
-                                }
-                            });
-                        });
-                    } else {
-                        ui.label("Not connected");
-                    }
-                });
+                }
             });
-
             ctx.request_repaint();
         });
     }
@@ -680,6 +686,28 @@ pub fn simulate_roborio() {
     // let com = DriverstationComm::start_comm();
     println!("{}", std::mem::size_of::<RoborioCom>());
     let com = Arc::new(roborio::RoborioCom::default());
+
+    com.set_test_hook(||{
+        println!("test")
+    });
+    com.set_auton_hook(||{
+        println!("auton")
+    });
+    com.set_teleop_hook(||{
+        println!("teleop")
+    });
+    com.set_disable_hook(||{
+        println!("disable")
+    });
+    com.set_restart_code_hook(||{
+        println!("restart code")
+    });
+    com.set_restart_rio_hook(||{
+        println!("restart rio")
+    });
+    com.set_estop_hook(||{
+        println!("estop")
+    });
 
     roborio::RoborioCom::start_daemon(com.clone());
 
