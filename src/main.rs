@@ -240,17 +240,17 @@ pub fn controller(driverstation: Arc<RobotComm>) {
                         // gilrs::EventType::ButtonChanged(_, _, _) => todo!(),
                         gilrs::EventType::AxisChanged(axis, val, _) => {
                             match axis{
-                                gilrs::Axis::LeftStickX => 
+                                gilrs::Axis::LeftStickX =>
                                 controller.set_axis(0, (val * 127.5 - 0.5) as i8).unwrap(),
-                                gilrs::Axis::LeftStickY => 
+                                gilrs::Axis::LeftStickY =>
                                 controller.set_axis(1, (val * 127.5 - 0.5) as i8).unwrap(),
                                 // gilrs::Axis::LeftZ => 
                                 // controller.set_axis(2, (val * 127.5 - 0.5) as i8).unwrap(),
                                 // gilrs::Axis::RightZ => 
                                 // controller.set_axis(3, (val * 127.5 - 0.5) as i8).unwrap(),
-                                gilrs::Axis::RightStickX => 
+                                gilrs::Axis::RightStickX =>
                                 controller.set_axis(4, (val * 127.5 - 0.5) as i8).unwrap(),
-                                gilrs::Axis::RightStickY => 
+                                gilrs::Axis::RightStickY =>
                                 controller.set_axis(5, (val * 127.5 - 0.5) as i8).unwrap(),
                                 _ => {}
                                 // gilrs::Axis::DPadX => todo!(),

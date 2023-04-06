@@ -6,9 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use eframe::{
-    egui::{self, Margin, RichText, Slider, TextEdit, Widget},
-};
+use eframe::egui::{self, Margin, RichText, Slider, TextEdit, Widget};
 use net_comm::{robot_to_driverstation::Message, robot_voltage::RobotVoltage};
 use roborio::RoborioCom;
 use robot_comm::util::{
@@ -16,7 +14,7 @@ use robot_comm::util::{
     buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
     super_small_vec::SuperSmallVec,
 };
-use sysinfo::{CpuExt, SystemExt, NetworkExt};
+use sysinfo::{CpuExt, NetworkExt, SystemExt};
 
 #[derive(Debug)]
 pub enum ControllerInfo<'a> {
@@ -66,12 +64,11 @@ struct RioUi {
 }
 
 #[derive(Default)]
-struct UdpUi{
+struct UdpUi {
     joystick_selected: usize,
 }
 impl UdpUi {
     fn show(&mut self, ui: &mut egui::Ui, driverstation: &RoborioCom) {
-        
         let control_code = driverstation.get_control_code();
         let request_code = driverstation.get_request_code();
 
@@ -89,7 +86,13 @@ impl UdpUi {
             // driverstation.observe_restart_roborio_code();
         }
 
-        if ui.selectable_label(driverstation.get_observed_status().has_robot_code(), "Has Robot Code").clicked(){
+        if ui
+            .selectable_label(
+                driverstation.get_observed_status().has_robot_code(),
+                "Has Robot Code",
+            )
+            .clicked()
+        {
             driverstation.observe_robot_code(!driverstation.get_observed_status().has_robot_code())
         }
         // driverstation.request_disable();
@@ -110,10 +113,7 @@ impl UdpUi {
                 }
 
                 if ui
-                    .selectable_label(
-                        driverstation.get_request_disable(),
-                        "Request Disable",
-                    )
+                    .selectable_label(driverstation.get_request_disable(), "Request Disable")
                     .clicked()
                 {
                     driverstation.request_disable()
@@ -130,8 +130,7 @@ impl UdpUi {
                     .selectable_label(driverstation.is_brownout_protection(), "Brownout")
                     .clicked()
                 {
-                    driverstation
-                        .observe_robot_brownout(!driverstation.is_brownout_protection())
+                    driverstation.observe_robot_brownout(!driverstation.is_brownout_protection())
                 }
                 if ui
                     .selectable_label(driverstation.is_estopped(), "ESTOP")
@@ -156,8 +155,7 @@ impl UdpUi {
                     )
                     .changed()
                 {
-                    driverstation
-                        .observe_robot_voltage(RobotVoltage::from_f32(battery_val))
+                    driverstation.observe_robot_voltage(RobotVoltage::from_f32(battery_val))
                 }
                 egui::Frame {
                     stroke: ui.style().visuals.window_stroke,
@@ -224,7 +222,6 @@ impl UdpUi {
 
                 ui.label(format!("{:#?}", driverstation.get_request_code()));
                 ui.label(format!("{:#?}", driverstation.get_control_code()));
-
             });
 
             ui.separator();
@@ -295,7 +292,6 @@ impl UdpUi {
             });
         });
     }
-
 
     fn show_tags(&self, ui: &mut egui::Ui, driverstation: &RoborioCom) {
         ui.vertical(|ui| {
@@ -381,42 +377,56 @@ impl UdpUi {
 }
 
 #[derive(Default)]
-struct TcpUi{
+struct TcpUi {
     joystick_selected: usize,
 }
 impl TcpUi {
     fn show(&mut self, ui: &mut egui::Ui, driverstation: &RoborioCom) {
-        ui.horizontal(|ui|{
-            ui.vertical(|ui|{
-                if let Some(gamedata) = driverstation.get_game_data(){
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                if let Some(gamedata) = driverstation.get_game_data() {
                     ui.label(format!("gamedata: {:#?}", gamedata));
-                }else{
+                } else {
                     ui.label("gamedata: None");
                 }
 
-                if let Some(matchinfo) = driverstation.get_match_info(){
+                if let Some(matchinfo) = driverstation.get_match_info() {
                     ui.label(format!("matchinfo: {:#?}", matchinfo));
-                }else{
+                } else {
                     ui.label("matchinfo: None");
                 }
 
-                ui.separator();
-                ui.horizontal(|ui|{
-                    for i in 0..6{
-                        if ui.selectable_label(i == self.joystick_selected, format!("joystick_{}", i + 1)).clicked(){
-                            self.joystick_selected = i;
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        for i in 0..6 {
+                            if ui
+                                .selectable_label(
+                                    i == self.joystick_selected,
+                                    format!("joystick_{}", i + 1),
+                                )
+                                .clicked()
+                            {
+                                self.joystick_selected = i;
+                            }
                         }
+                    });
+                    ui.separator();
+
+                    if let Some(controller_info) =
+                        driverstation.get_controller_info(self.joystick_selected as u8)
+                    {
+                        ui.label(format!("contorller info: {:#?}", controller_info))
+                    } else {
+                        ui.label("contriller info: None")
                     }
                 });
-                if let Some(controller_info) = driverstation.get_controller_info(self.joystick_selected as u8){
-                    ui.label(format!("contorller info: {:#?}", controller_info))
-                }else{
-                    ui.label("contriller info: None")
-                }
             });
-            ui.separator();
-            ui.vertical(|ui|{
 
+            ui.separator();
+            ui.vertical(|ui| {
+                if ui.button("Send Message").clicked() {
+                    driverstation.send_message("ASdasdsd");
+                }
             });
         });
     }
@@ -465,11 +475,10 @@ impl eframe::App for RioUi {
         egui::TopBottomPanel::top("Bruh").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 sysinfo(|sysinfo| {
-                    
-                    if ui.selectable_label(self.tab == 0, "UDP").clicked(){
+                    if ui.selectable_label(self.tab == 0, "UDP").clicked() {
                         self.tab = 0;
                     }
-                    if ui.selectable_label(self.tab == 1, "TCP").clicked(){
+                    if ui.selectable_label(self.tab == 1, "TCP").clicked() {
                         self.tab = 1;
                     }
 
@@ -477,7 +486,7 @@ impl eframe::App for RioUi {
                         "CPU: {:.2}%",
                         sysinfo.global_cpu_info().cpu_usage()
                     ));
-                    for (name, usage) in sysinfo.networks(){
+                    for (name, usage) in sysinfo.networks() {
                         ui.label(format!(
                             "Network: {} rx{}, tx{}",
                             name,
@@ -485,10 +494,7 @@ impl eframe::App for RioUi {
                             usage.transmitted()
                         ));
                         // usage.
-                        
                     }
-                    
-                    
                 });
                 ui.add_space(2.0);
                 // for (name, info) in self.sysinfo.networks(){
@@ -499,13 +505,11 @@ impl eframe::App for RioUi {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.push_id(self.tab, |ui|{
-                match self.tab{
-                    0 => self.udp.show(ui, &self.driverstation),
-                    1 => self.tcp.show(ui, &self.driverstation),
-                    _ => {
-                        ui.label("Bruh how did you even get to this tab, kinda impressive ngl");
-                    }
+            ui.push_id(self.tab, |ui| match self.tab {
+                0 => self.udp.show(ui, &self.driverstation),
+                1 => self.tcp.show(ui, &self.driverstation),
+                _ => {
+                    ui.label("Bruh how did you even get to this tab, kinda impressive ngl");
                 }
             });
             ctx.request_repaint();
@@ -687,27 +691,13 @@ pub fn simulate_roborio() {
     println!("{}", std::mem::size_of::<RoborioCom>());
     let com = Arc::new(roborio::RoborioCom::default());
 
-    com.set_test_hook(||{
-        println!("test")
-    });
-    com.set_auton_hook(||{
-        println!("auton")
-    });
-    com.set_teleop_hook(||{
-        println!("teleop")
-    });
-    com.set_disable_hook(||{
-        println!("disable")
-    });
-    com.set_restart_code_hook(||{
-        println!("restart code")
-    });
-    com.set_restart_rio_hook(||{
-        println!("restart rio")
-    });
-    com.set_estop_hook(||{
-        println!("estop")
-    });
+    com.set_test_hook(|| println!("test"));
+    com.set_auton_hook(|| println!("auton"));
+    com.set_teleop_hook(|| println!("teleop"));
+    com.set_disable_hook(|| println!("disable"));
+    com.set_restart_code_hook(|| println!("restart code"));
+    com.set_restart_rio_hook(|| println!("restart rio"));
+    com.set_estop_hook(|| println!("estop"));
 
     roborio::RoborioCom::start_daemon(com.clone());
 

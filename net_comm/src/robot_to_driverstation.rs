@@ -368,7 +368,6 @@ impl<'a> CreateFromBuf<'a> for Message<'a> {
                     let err = buf.read_u8()?;
 
                     let msg_len = buf.read_u16()?;
-
                     let message = buf.read_str(msg_len as usize)?;
                     let loc_len = buf.read_u16()?;
                     let location = buf.read_str(loc_len as usize)?;

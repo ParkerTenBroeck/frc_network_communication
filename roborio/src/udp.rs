@@ -12,7 +12,8 @@ use robot_comm::{
         control_code::ControlCode,
         joystick::{Joystick, NonNegU16},
         request_code::{DriverstationRequestCode, RobotRequestCode},
-        time_data::TimeData, roborio_status_code::RobotStatusCode,
+        roborio_status_code::RobotStatusCode,
+        time_data::TimeData,
     },
     driver_to_robot::{
         reader::{DriverToRobotPacketReader, PacketTagAcceptor},
@@ -54,7 +55,8 @@ pub(super) struct RoborioUdp {
     /// (if the sequence skips a value)
     packets_dropped: AtomicUsize,
 
-    connection_timeout_ms: AtomicU32,
+    connection_disable_timeout_ms: AtomicU32,
+    connection_reset_timeout_ms: AtomicU32,
     read_block_timout_ms: AtomicU32,
 
     hooks: RwLock<Hooks>,
@@ -99,7 +101,8 @@ impl Default for RoborioUdp {
             packets_received: Default::default(),
             packets_dropped: Default::default(),
             //mid
-            connection_timeout_ms: AtomicU32::new(10000),
+            connection_disable_timeout_ms: AtomicU32::new(10000),
+            connection_reset_timeout_ms: AtomicU32::new(20000),
             read_block_timout_ms: AtomicU32::new(120),
 
             hooks: Default::default(),
@@ -179,12 +182,14 @@ impl RoborioCom {
 
         while (*myself).exists_elsewhere() {
             let reset_kind = myself.udp.reset_con.swap(0, Relaxed);
-            if reset_kind >= 2 {
+            if reset_kind > 1 {
                 myself.force_disable();
+            }
+            if reset_kind >= 2 {
                 // reset out udp information every time reconnect
+                myself.udp.connected.store(false, Relaxed);
                 myself.common.driverstation_ip.lock().take();
                 myself.udp.packets_dropped.store(0, Relaxed);
-                myself.udp.connected.store(false, Relaxed);
                 myself.udp.bytes_received.store(0, Relaxed);
                 myself.udp.packets_received.store(0, Relaxed);
                 myself.udp.packets_sent.store(0, Relaxed);
@@ -259,7 +264,7 @@ impl RoborioCom {
                         //reconnect if theres a new address to send to
                         if last_sucsess.elapsed()
                             > std::time::Duration::from_millis(
-                                self.udp.connection_timeout_ms.load(Relaxed) as u64,
+                                self.udp.connection_reset_timeout_ms.load(Relaxed) as u64,
                             )
                         {
                             // when the IP changes we want to treat this as a new connection
@@ -308,15 +313,21 @@ impl RoborioCom {
                 Err(err) => {
                     if last_sucsess.elapsed()
                         > std::time::Duration::from_millis(
-                            self.udp.connection_timeout_ms.load(Relaxed) as u64,
+                            self.udp.connection_disable_timeout_ms.load(Relaxed) as u64,
                         )
                     {
-                        // not sure if this should be 1 or 2, either way we should force disable
                         self.force_disable();
-                        self.udp.reset_con.store(2, Relaxed);
-                        self.udp.connected.store(false, Relaxed);
-                        self.report_error(RoborioComError::UdpConnectionTimeoutError);
-                        break;
+
+                        if last_sucsess.elapsed()
+                            > std::time::Duration::from_millis(
+                                self.udp.connection_reset_timeout_ms.load(Relaxed) as u64,
+                            )
+                        {
+                            self.report_error(RoborioComError::UdpConnectionTimeoutError);
+                            self.udp.connected.store(false, Relaxed);
+                            self.udp.reset_con.store(2, Relaxed);
+                            break;
+                        }
                     }
                     if err.kind() == std::io::ErrorKind::WouldBlock {
                         // were still connected however we haven't received a packet in time so we should force disable
@@ -575,7 +586,6 @@ impl RoborioCom {
 // Public interface to UDP com ---------------------------------------------------
 
 impl RoborioCom {
-    
     pub fn reset_all_values(&self) {
         self.udp
             .reset_con
@@ -595,10 +605,10 @@ impl RoborioCom {
         );
     }
 
-    /// This will literally crash the offical driverstation 
-    /// 
+    /// This will literally crash the offical driverstation
+    ///
     /// # Safety
-    /// 
+    ///
     /// uh well.. this is sorta unsafe behavior so dont call it unless you actually want to... well... crash driverstation :)
     pub unsafe fn crash_driverstation(&self) {
         let mut lock = self.udp.observed_information.lock();
@@ -609,9 +619,12 @@ impl RoborioCom {
 
 //udp tings
 impl RoborioCom {
-
-    pub fn request_estop(&self){
-        self.udp.observed_information.lock().control_code.set_estop(true);
+    pub fn request_estop(&self) {
+        self.udp
+            .observed_information
+            .lock()
+            .control_code
+            .set_estop(true);
         self.run_estop_hook();
     }
 
@@ -803,15 +816,29 @@ impl RoborioCom {
             .unwrap_or(&None)
     }
 
-    pub fn set_udp_connection_timeout(&self, connection_timeout_ms: u32) {
+    pub fn set_udp_connection_disable_timeout(&self, connection_disable_timeout_ms: u32) {
+        self.udp.connection_disable_timeout_ms.store(
+            connection_disable_timeout_ms,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
+    pub fn get_udp_connection_disable_timeout(&self) -> u32 {
         self.udp
-            .connection_timeout_ms
-            .store(connection_timeout_ms, std::sync::atomic::Ordering::Relaxed);
+            .connection_disable_timeout_ms
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_udp_connection_timeout(&self, connection_reset_timeout_ms: u32) {
+        self.udp.connection_reset_timeout_ms.store(
+            connection_reset_timeout_ms,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     pub fn get_udp_connection_timeout(&self) -> u32 {
         self.udp
-            .connection_timeout_ms
+            .connection_reset_timeout_ms
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
