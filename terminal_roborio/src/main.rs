@@ -18,10 +18,20 @@ use unicode_width::UnicodeWidthStr;
 fn main() -> Result<(), io::Error> {
     let driverstation = Arc::new(RoborioCom::default());
     RoborioCom::start_daemon(driverstation.clone());
-    std::process::Command::new("avahi-publish-service")
+    let child = std::process::Command::new("avahi-publish-service")
         .args(["roboRIO-1114-FRC", "_ni-rt._tcp", "1110", "\"ROBORIO\""])
+        // .stdout(std::process::Stdio::null())
+        // .stderr(std::process::Stdio::null())
+        // .stdin(std::process::Stdio::null())
         .spawn()
         .unwrap();
+    let child = KillOnDrop(child);
+    struct KillOnDrop(std::process::Child);
+    impl Drop for KillOnDrop{
+        fn drop(&mut self) {
+            _ = self.0.kill();
+        }
+    }
 
     // setup terminal
     enable_raw_mode()?;
@@ -41,6 +51,8 @@ fn main() -> Result<(), io::Error> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
+
+    drop(child);
 
     res
 }
