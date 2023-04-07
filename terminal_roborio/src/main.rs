@@ -18,11 +18,12 @@ use unicode_width::UnicodeWidthStr;
 fn main() -> Result<(), io::Error> {
     let driverstation = Arc::new(RoborioCom::default());
     RoborioCom::start_daemon(driverstation.clone());
+    
     let child = std::process::Command::new("avahi-publish-service")
         .args(["roboRIO-1114-FRC", "_ni-rt._tcp", "1110", "\"ROBORIO\""])
-        // .stdout(std::process::Stdio::null())
-        // .stderr(std::process::Stdio::null())
-        // .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
         .spawn()
         .unwrap();
     let child = KillOnDrop(child);
@@ -32,6 +33,9 @@ fn main() -> Result<(), io::Error> {
             _ = self.0.kill();
         }
     }
+
+    // driverstation
+    driverstation.observe_robot_code(true);
 
     // setup terminal
     enable_raw_mode()?;

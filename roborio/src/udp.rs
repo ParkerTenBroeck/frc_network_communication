@@ -57,7 +57,6 @@ pub(super) struct RoborioUdp {
 
     connection_disable_timeout_ms: AtomicU32,
     connection_reset_timeout_ms: AtomicU32,
-    read_block_timout_ms: AtomicU32,
 
     hooks: RwLock<Hooks>,
 }
@@ -101,9 +100,8 @@ impl Default for RoborioUdp {
             packets_received: Default::default(),
             packets_dropped: Default::default(),
             //mid
-            connection_disable_timeout_ms: AtomicU32::new(10000),
+            connection_disable_timeout_ms: AtomicU32::new(120),
             connection_reset_timeout_ms: AtomicU32::new(20000),
-            read_block_timout_ms: AtomicU32::new(120),
 
             hooks: Default::default(),
         }
@@ -224,7 +222,7 @@ impl RoborioCom {
                 };
             // idk this time is sorta random :3
             match socket.set_read_timeout(Some(std::time::Duration::from_millis(
-                myself.udp.read_block_timout_ms.load(Relaxed) as u64,
+                myself.udp.connection_disable_timeout_ms.load(Relaxed) as u64,
             ))) {
                 Ok(_) => {}
                 Err(err) => {
@@ -313,25 +311,19 @@ impl RoborioCom {
                 Err(err) => {
                     if last_sucsess.elapsed()
                         > std::time::Duration::from_millis(
-                            self.udp.connection_disable_timeout_ms.load(Relaxed) as u64,
+                            self.udp.connection_reset_timeout_ms.load(Relaxed) as u64,
                         )
                     {
                         self.force_disable();
-
-                        if last_sucsess.elapsed()
-                            > std::time::Duration::from_millis(
-                                self.udp.connection_reset_timeout_ms.load(Relaxed) as u64,
-                            )
-                        {
-                            self.report_error(RoborioComError::UdpConnectionTimeoutError);
-                            self.udp.connected.store(false, Relaxed);
-                            self.udp.reset_con.store(2, Relaxed);
-                            break;
-                        }
+                        self.report_error(RoborioComError::UdpConnectionTimeoutError);
+                        self.udp.connected.store(false, Relaxed);
+                        self.udp.reset_con.store(2, Relaxed);
+                        break;
                     }
                     if err.kind() == std::io::ErrorKind::WouldBlock {
                         // were still connected however we haven't received a packet in time so we should force disable
                         self.force_disable();
+                        //TODO maybe report a warning of some sort
                     } else {
                         // if theres an IO error something weird happened so reset the connection
                         self.udp.reset_con.store(2, Relaxed);
@@ -816,9 +808,22 @@ impl RoborioCom {
             .unwrap_or(&None)
     }
 
+    /// The amount of time we can wait for a packet to arive before we run the disable hook.
+    /// 
+    /// This will not reset the connection but ensures that we dont keep running if we haven't received a packet in x time
     pub fn set_udp_connection_disable_timeout(&self, connection_disable_timeout_ms: u32) {
         self.udp.connection_disable_timeout_ms.store(
             connection_disable_timeout_ms,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        // we dont want to override the reset con value if its stronger than 1
+        // so we can use compare exchange to only set it when its zero
+        // if it fails because the current value is 1 thats fine its what we want
+        // and if it fails because the current value is greater than 1 it has a stronger reset and will do what we want
+        let _ = self.udp.reset_con.compare_exchange(
+            0,
+            1,
+            std::sync::atomic::Ordering::Release,
             std::sync::atomic::Ordering::Relaxed,
         );
     }
@@ -839,28 +844,6 @@ impl RoborioCom {
     pub fn get_udp_connection_timeout(&self) -> u32 {
         self.udp
             .connection_reset_timeout_ms
-            .load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    pub fn set_udp_read_blocking_timeout(&self, read_blocking_timeout_ms: u32) {
-        self.udp.read_block_timout_ms.store(
-            read_blocking_timeout_ms,
-            std::sync::atomic::Ordering::Relaxed,
-        );
-        // we dont want to override the reset con value if its stronger than 1
-        // so we can use compare exchange to only set it when its zero
-        // if it fails because the current value is 1 thats fine its what we want
-        // and if it fails because the current value is greater than 1 it has a stronger reset and will do what we want
-        let _ = self.udp.reset_con.compare_exchange(
-            0,
-            1,
-            std::sync::atomic::Ordering::Release,
-            std::sync::atomic::Ordering::Relaxed,
-        );
-    }
-    pub fn get_udp_read_blocking_timeout(&self) -> u32 {
-        self.udp
-            .read_block_timout_ms
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
