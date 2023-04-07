@@ -1,4 +1,3 @@
-
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
@@ -434,7 +433,13 @@ impl RoborioCom {
         let coms = coms.to_be_bytes();
         let v12 = v12.to_be_bytes();
         let data = [0x04, coms[0], coms[1], v12[0], v12[1]];
-        if let Err(err) = self.tcp.send_buffer.lock().unwrap().write_tracked(data.as_slice()) {
+        if let Err(err) = self
+            .tcp
+            .send_buffer
+            .lock()
+            .unwrap()
+            .write_tracked(data.as_slice())
+        {
             println!("{:#?}", err);
         }
     }
@@ -444,8 +449,22 @@ impl RoborioCom {
         let short_6v = short_6v.to_be_bytes();
         let short_5v = short_5v.to_be_bytes();
         let short_3_3v = short_3_3v.to_be_bytes();
-        let data = [0x05, short_6v[0], short_6v[1], short_5v[0], short_5v[1], short_3_3v[0], short_3_3v[1]];
-        if let Err(err) = self.tcp.send_buffer.lock().unwrap().write_tracked(data.as_slice()) {
+        let data = [
+            0x05,
+            short_6v[0],
+            short_6v[1],
+            short_5v[0],
+            short_5v[1],
+            short_3_3v[0],
+            short_3_3v[1],
+        ];
+        if let Err(err) = self
+            .tcp
+            .send_buffer
+            .lock()
+            .unwrap()
+            .write_tracked(data.as_slice())
+        {
             println!("{:#?}", err);
         }
     }
@@ -499,8 +518,21 @@ impl RoborioCom {
     pub fn send_underline_5v_disabled(&self, disable_5v: u16, underline: [u8; 3]) {
         // 0x0D
         let disable_5v = disable_5v.to_be_bytes();
-        let data = [0x0D, disable_5v[0], disable_5v[1], underline[0], underline[1], underline[2]];
-        if let Err(err) = self.tcp.send_buffer.lock().unwrap().write_tracked(data.as_slice()) {
+        let data = [
+            0x0D,
+            disable_5v[0],
+            disable_5v[1],
+            underline[0],
+            underline[1],
+            underline[2],
+        ];
+        if let Err(err) = self
+            .tcp
+            .send_buffer
+            .lock()
+            .unwrap()
+            .write_tracked(data.as_slice())
+        {
             println!("{:#?}", err);
         }
     }

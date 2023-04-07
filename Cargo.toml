@@ -19,11 +19,12 @@ atomic = "*"
 
 [workspace]
 members = [
+    "terminal_roborio",
     "util",
     "robot_comm",
     "net_comm",
     "driverstation",
-    "roborio"
+    "roborio",
 ]
 
 resolver = "2"
