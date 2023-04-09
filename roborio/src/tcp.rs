@@ -153,14 +153,6 @@ impl RoborioCom {
                                 Ok(size) if size > 0 => {
                                     let buf = &buf[..size];
 
-                                    let mut buffer_reader = BufferReader::new(buf);
-
-                                    let msg = Message::create_from_buf(
-                                        &mut buffer_reader.read_known_length_u16().unwrap(),
-                                    )
-                                    .unwrap();
-                                    println!("{:#?}", msg);
-
                                     for connection in &mut *connections.lock().unwrap() {
                                         // so uh idrk what the best chunk size to send is?? but a;dssf;lkjatlkj
                                         connection.write_all(buf).unwrap();
@@ -308,7 +300,6 @@ impl RoborioCom {
             let size = u16::from_be_bytes(buf[..2].try_into().unwrap());
 
             if size == 0 {
-                println!("{size}");
                 continue;
             }
 

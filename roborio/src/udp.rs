@@ -809,7 +809,7 @@ impl RoborioCom {
     }
 
     /// The amount of time we can wait for a packet to arive before we run the disable hook.
-    /// 
+    ///
     /// This will not reset the connection but ensures that we dont keep running if we haven't received a packet in x time
     pub fn set_udp_connection_disable_timeout(&self, connection_disable_timeout_ms: u32) {
         self.udp.connection_disable_timeout_ms.store(

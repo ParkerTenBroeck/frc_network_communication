@@ -1,24 +1,27 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
+    style::{StyledContent},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    QueueableCommand,
 };
+use etui::{StyledText, Context};
 use roborio::RoborioCom;
-use std::{io, sync::Arc, thread, time::Duration};
-use tui::{
-    backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Span, Spans, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Widget},
-    Frame, Terminal,
+use std::{
+    io::{self, Stdout, Write},
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use unicode_width::UnicodeWidthStr;
+
+use crate::app::App;
+
+mod app;
+pub mod etui;
 
 fn main() -> Result<(), io::Error> {
     let driverstation = Arc::new(RoborioCom::default());
     RoborioCom::start_daemon(driverstation.clone());
-    
+
     let child = std::process::Command::new("avahi-publish-service")
         .args(["roboRIO-1114-FRC", "_ni-rt._tcp", "1110", "\"ROBORIO\""])
         .stdout(std::process::Stdio::null())
@@ -28,7 +31,7 @@ fn main() -> Result<(), io::Error> {
         .unwrap();
     let child = KillOnDrop(child);
     struct KillOnDrop(std::process::Child);
-    impl Drop for KillOnDrop{
+    impl Drop for KillOnDrop {
         fn drop(&mut self) {
             _ = self.0.kill();
         }
@@ -41,189 +44,78 @@ fn main() -> Result<(), io::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    execute!(stdout, crossterm::cursor::Hide)?;
 
     let app = App::new(driverstation);
-    let res = app.run_app(&mut terminal);
+    let res = run_app(&mut stdout, app, std::time::Duration::from_millis(16));
 
     // restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    execute!(stdout, LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(stdout, crossterm::cursor::Show)?;
 
     drop(child);
 
     res
 }
 
-enum InputMode {
-    Normal,
-    Editing,
-}
+fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result<()> {
+    let mut last_tick = Instant::now();
+    let mut ctx = Context::default();
 
-enum SelectedTab {
-    Common,
-    Udp,
-    Tcp,
-}
+    loop {
+        
+        app.ui(&ctx);
 
-struct App {
-    driverstation: Arc<RoborioCom>,
-    tab: SelectedTab,
-    /// Current value of the input box
-    input: String,
-    /// Current input mode
-    input_mode: InputMode,
-    /// History of recorded messages
-    messages: Vec<String>,
-}
+        execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All))?;
 
-struct Common {}
+        let mut draws = Vec::new();
+        ctx.take_draw_commands(&mut draws);
+        for items in draws {
+            match items {
+                etui::Draw::ClearAll(_) => todo!(),
+                etui::Draw::Clear(_, _) => todo!(),
+                etui::Draw::Text(text, start) => {
+                    let StyledText { text, style } = text;
 
-impl Common {
-    pub fn ui<B: Backend>(&self, f: &mut Frame<B>) {}
-}
-
-struct Udp {}
-
-impl Udp {
-    pub fn ui<B: Backend>(&self, f: &mut Frame<B>) {}
-}
-
-struct Tcp {}
-
-impl Tcp {
-    pub fn ui<B: Backend>(&self, f: &mut Frame<B>) {}
-}
-
-impl App {
-    pub fn new(driverstation: Arc<RoborioCom>) -> Self {
-        Self {
-            input: String::new(),
-            input_mode: InputMode::Normal,
-            messages: Vec::new(),
-            tab: SelectedTab::Common,
-            driverstation,
-        }
-    }
-
-    pub fn run_app<B: Backend>(mut self, terminal: &mut Terminal<B>) -> io::Result<()> {
-        loop {
-            terminal.draw(|f| self.ui(f))?;
-
-            let event = event::read()?;
-
-            if let Event::Key(key) = event {
-                match self.input_mode {
-                    InputMode::Normal => match key.code {
-                        KeyCode::Char('e') => {
-                            self.input_mode = InputMode::Editing;
-                        }
-                        KeyCode::Char('q') => {
-                            return Ok(());
-                        }
-                        _ => {}
-                    },
-                    InputMode::Editing => match key.code {
-                        KeyCode::Enter => {
-                            self.messages.push(self.input.drain(..).collect());
-                        }
-                        KeyCode::Char(c) => {
-                            self.input.push(c);
-                        }
-                        KeyCode::Backspace => {
-                            self.input.pop();
-                        }
-                        KeyCode::Esc => {
-                            self.input_mode = InputMode::Normal;
-                        }
-                        _ => {}
-                    },
+                    io::stdout().queue(crossterm::cursor::MoveTo(start.x, start.y))?;
+                    io::stdout().queue(crossterm::style::PrintStyledContent(
+                        StyledContent::new(
+                            crossterm::style::ContentStyle {
+                                foreground_color: Some(style.fg),
+                                background_color: Some(style.bg),
+                                underline_color: Some(style.fg),
+                                attributes: style.attributes,
+                            },
+                            text.as_str(),
+                        ),
+                    ))?;
                 }
             }
         }
-    }
 
-    pub fn ui<B: Backend>(&self, f: &mut Frame<B>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(2)
-            .constraints(
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(3),
-                    Constraint::Min(1),
-                ]
-                .as_ref(),
-            )
-            .split(f.size());
+        stdout.flush()?;
 
-        let (msg, style) = match self.input_mode {
-            InputMode::Normal => (
-                vec![
-                    Span::raw("Press "),
-                    Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw(" to exit, "),
-                    Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw(" to start editing."),
-                ],
-                Style::default().add_modifier(Modifier::RAPID_BLINK),
-            ),
-            InputMode::Editing => (
-                vec![
-                    Span::raw("Press "),
-                    Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw(" to stop editing, "),
-                    Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw(" to record the message"),
-                ],
-                Style::default(),
-            ),
-        };
-        let mut text = Text::from(Spans::from(msg));
-        text.patch_style(style);
-        let help_message = Paragraph::new(text);
-        f.render_widget(help_message, chunks[0]);
-
-        let input = Paragraph::new(self.input.as_ref())
-            .style(match self.input_mode {
-                InputMode::Normal => Style::default(),
-                InputMode::Editing => Style::default().fg(Color::Yellow),
-            })
-            .block(Block::default().borders(Borders::ALL).title("Input"));
-        f.render_widget(input, chunks[1]);
-        match self.input_mode {
-            InputMode::Normal =>
-                // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
-                {}
-
-            InputMode::Editing => {
-                // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
-                f.set_cursor(
-                    // Put cursor past the end of the input text
-                    chunks[1].x + self.input.width() as u16 + 1,
-                    // Move one line down, from the border to the input line
-                    chunks[1].y + 1,
-                )
+        let timeout = tick_rate
+            .checked_sub(last_tick.elapsed())
+            .unwrap_or_else(|| Duration::from_secs(0));
+        if crossterm::event::poll(timeout)? {
+            let event = event::read()?;
+            // if app.on_event(event) {
+            //     return Ok(());
+            // }
+            if let Event::Key(key) = event {
+                if let event::KeyEvent {
+                    code: KeyCode::Esc, ..
+                } = key
+                {
+                    return Ok(());
+                }
             }
+            ctx.new_event(event);
         }
-
-        let messages: Vec<ListItem> = self
-            .messages
-            .iter()
-            .enumerate()
-            .map(|(i, m)| {
-                let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
-                ListItem::new(content)
-            })
-            .collect();
-        let messages =
-            List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
-        f.render_widget(messages, chunks[2]);
+        if last_tick.elapsed() >= tick_rate {
+            last_tick = Instant::now();
+        }
     }
 }

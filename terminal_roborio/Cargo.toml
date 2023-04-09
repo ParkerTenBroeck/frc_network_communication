@@ -10,3 +10,4 @@ roborio = { path = "../roborio" }
 tui = "0.19"
 crossterm = "0.26"
 unicode-width = "0.1"
+bitflags = "*"
