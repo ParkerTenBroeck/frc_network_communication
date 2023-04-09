@@ -1,10 +1,7 @@
 use roborio::RoborioCom;
-use std::{
-    sync::Arc,
-};
+use std::sync::Arc;
 
-
-use crate::etui::{self, Context};
+use crate::etui::{self, Context, StyledText};
 
 enum InputMode {
     Normal,
@@ -24,18 +21,15 @@ pub struct App {
 
 struct Common {}
 
-impl Common {
-}
+impl Common {}
 
 struct Udp {}
 
-impl Udp {
-}
+impl Udp {}
 
 struct Tcp {}
 
-impl Tcp {
-}
+impl Tcp {}
 
 impl App {
     pub fn new(driverstation: Arc<RoborioCom>) -> Self {
@@ -50,12 +44,35 @@ impl App {
 
     pub fn ui(&mut self, ctx: &etui::Context) {
         Context::frame(ctx, |ui| {
-            ui.label(format!("Driverstation:    {:?}", self.driverstation.get_driverstation_ip()));
-            ui.label(format!("Packets Dropped:  {}", self.driverstation.get_udp_packets_dropped()));
-            ui.label(format!("Packets Sent:     {}", self.driverstation.get_udp_packets_sent()));
-            ui.label(format!("Bytes Sent:       {}", self.driverstation.get_udp_bytes_sent()));
-            ui.label(format!("Packets Received: {}", self.driverstation.get_udp_packets_received()));
-            ui.label(format!("Bytes Received:   {}", self.driverstation.get_udp_bytes_received()));
+            {
+                let mut msg = StyledText::new("Press esc to exit");
+                msg.rapid_blink(true);
+                ui.label(msg);
+            }
+            ui.label(format!(
+                "Driverstation:    {:?}",
+                self.driverstation.get_driverstation_ip()
+            ));
+            ui.label(format!(
+                "Packets Dropped:  {}",
+                self.driverstation.get_udp_packets_dropped()
+            ));
+            ui.label(format!(
+                "Packets Sent:     {}",
+                self.driverstation.get_udp_packets_sent()
+            ));
+            ui.label(format!(
+                "Bytes Sent:       {}",
+                self.driverstation.get_udp_bytes_sent()
+            ));
+            ui.label(format!(
+                "Packets Received: {}",
+                self.driverstation.get_udp_packets_received()
+            ));
+            ui.label(format!(
+                "Bytes Received:   {}",
+                self.driverstation.get_udp_bytes_received()
+            ));
 
             ui.label("Bruh\n\tHey the newline and tab works");
             if ui.button("こんにちは世界!") {

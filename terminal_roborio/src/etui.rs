@@ -1,8 +1,9 @@
-use std::{
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
-use crossterm::{event::{Event, MouseButton, MouseEvent, MouseEventKind}, style::{Color, Attribute, Attributes}};
+use crossterm::{
+    event::{Event, MouseButton, MouseEvent, MouseEventKind},
+    style::{Attribute, Attributes, Color},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Rect {
@@ -80,11 +81,11 @@ struct ContextInner {
 }
 
 #[derive(Clone, Default)]
-pub struct Context{
-    inner: Arc<RwLock<ContextInner>>
+pub struct Context {
+    inner: Arc<RwLock<ContextInner>>,
 }
 
-impl Context{
+impl Context {
     pub fn frame(&self, func: impl FnOnce(&mut Ui)) {
         let lock = self.inner.read().unwrap();
         let mut ui = Ui {
@@ -100,21 +101,18 @@ impl Context{
         func(&mut ui);
     }
 
-    pub fn take_draw_commands(&mut self, vec: &mut Vec<Draw>){
+    pub fn take_draw_commands(&mut self, vec: &mut Vec<Draw>) {
         vec.append(&mut self.inner.write().unwrap().draws);
     }
 
-    pub fn new_event(&self, event: Event)  {
+    pub fn new_event(&self, event: Event) {
         self.inner.write().unwrap().event = Some(event)
     }
 
-    pub fn get_event(&self) -> Option<Event>{
+    pub fn get_event(&self) -> Option<Event> {
         self.inner.read().unwrap().event.clone()
     }
-
-
 }
-
 
 pub struct Ui {
     context: Context,
@@ -130,7 +128,7 @@ impl Ui {
         self.draw_gallery(gallery)
     }
 
-    pub fn ctx(&self) -> &Context{
+    pub fn ctx(&self) -> &Context {
         &self.context
     }
 

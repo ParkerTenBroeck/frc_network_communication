@@ -1,11 +1,11 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    style::{StyledContent},
+    style::StyledContent,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     QueueableCommand,
 };
-use etui::{StyledText, Context};
+use etui::{Context, StyledText};
 use roborio::RoborioCom;
 use std::{
     io::{self, Stdout, Write},
@@ -64,11 +64,11 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
     let mut ctx = Context::default();
 
     loop {
-        
         app.ui(&ctx);
 
-        execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All))?;
-
+        stdout.queue(crossterm::terminal::Clear(
+            crossterm::terminal::ClearType::All,
+        ))?;
         let mut draws = Vec::new();
         ctx.take_draw_commands(&mut draws);
         for items in draws {
