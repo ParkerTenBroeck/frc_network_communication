@@ -16,7 +16,7 @@ impl AllianceStation {
     pub fn is_red(&self) -> bool {
         match self {
             Self::Red1 | Self::Red2 | Self::Red3 => true,
-            Self::Blue1 | Self::Blue2 | Self::Blue3 => true,
+            Self::Blue1 | Self::Blue2 | Self::Blue3 => false,
         }
     }
 

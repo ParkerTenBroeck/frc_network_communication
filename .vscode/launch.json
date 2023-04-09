@@ -7,6 +7,81 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'terminal_roborio'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=terminal_roborio",
+                    "--package=terminal_roborio"
+                ],
+                "filter": {
+                    "name": "terminal_roborio",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'terminal_roborio'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=terminal_roborio",
+                    "--package=terminal_roborio"
+                ],
+                "filter": {
+                    "name": "terminal_roborio",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'roborio'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=roborio"
+                ],
+                "filter": {
+                    "name": "roborio",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'net_comm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=net_comm"
+                ],
+                "filter": {
+                    "name": "net_comm",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'util'",
             "cargo": {
                 "args": [
@@ -45,25 +120,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'net_comm'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=net_comm"
-                ],
-                "filter": {
-                    "name": "net_comm",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug unit tests in library 'driverstation'",
             "cargo": {
                 "args": [
@@ -74,25 +130,6 @@
                 ],
                 "filter": {
                     "name": "driverstation",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in library 'roborio'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=roborio"
-                ],
-                "filter": {
-                    "name": "roborio",
                     "kind": "lib"
                 }
             },

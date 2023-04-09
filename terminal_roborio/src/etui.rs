@@ -5,6 +5,8 @@ use crossterm::{
     style::{Attribute, Attributes, Color},
 };
 
+use crate::symbols::line::{BOTTOM_LEFT, BOTTOM_RIGHT, HORIZONTAL, TOP_LEFT, TOP_RIGHT, VERTICAL};
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Rect {
     pub x: u16,
@@ -52,11 +54,39 @@ impl Rect {
         true
     }
 
-    fn contains(&self, column: u16, row: u16) -> bool {
+    pub fn contains(&self, column: u16, row: u16) -> bool {
         self.x <= column
             && (self.x.saturating_add(self.width)) > column
             && self.y <= row
             && (self.y.saturating_add(self.height)) > row
+    }
+
+    pub fn top_left(&self) -> Pos2 {
+        Pos2 {
+            x: self.x,
+            y: self.y,
+        }
+    }
+
+    pub fn top_right(&self) -> Pos2 {
+        Pos2 {
+            x: self.x.saturating_add(self.width).saturating_sub(1),
+            y: self.y,
+        }
+    }
+
+    pub fn bottom_left(&self) -> Pos2 {
+        Pos2 {
+            x: self.x,
+            y: self.y.saturating_add(self.height).saturating_sub(1),
+        }
+    }
+
+    pub fn bottom_right(&self) -> Pos2 {
+        Pos2 {
+            x: self.x.saturating_add(self.width).saturating_sub(1),
+            y: self.y.saturating_add(self.height).saturating_sub(1),
+        }
     }
 }
 
@@ -91,12 +121,14 @@ impl Context {
         let mut ui = Ui {
             clip: lock.max_rect,
             mix_rect: Default::default(),
+            layout: Layout::Vertical,
             max_rect: lock.max_rect,
             cursor: {
                 drop(lock);
                 Default::default()
             },
             context: (*self).clone(),
+            current: Default::default(),
         };
         func(&mut ui);
     }
@@ -114,12 +146,21 @@ impl Context {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Layout {
+    Vertical,
+    Horizontal,
+}
+
+#[derive(Clone)]
 pub struct Ui {
     context: Context,
+    layout: Layout,
     clip: Rect,
     mix_rect: Rect,
     max_rect: Rect,
     cursor: Rect,
+    current: Rect,
 }
 
 impl Ui {
@@ -132,14 +173,212 @@ impl Ui {
         &self.context
     }
 
-    fn draw_gallery(&mut self, gallery: Vec<(Pos2, StyledText)>) {
+    fn child(&self) -> Ui {
+        let mut ui = self.clone();
+        ui.current = ui.cursor;
+        ui.current.width = 0;
+        ui.current.height = 0;
+        ui.clip.x = ui.cursor.x;
+        ui.clip.y = ui.cursor.y;
+        ui
+    }
+
+    pub fn bordered(&mut self, func: impl FnOnce(&mut Ui)) {
+        let mut child = self.child();
+        // child.clip.x += 1;
+        // child.clip.y += 1;
+        // child.clip.width -= 1;
+        // child.clip.height -= 1;
+
+        child.cursor.x += 1;
+        child.cursor.y += 1;
+
+        child.current.width = 0;
+        child.current.height = 0;
+        child.current.x = child.cursor.x;
+        child.current.y = child.cursor.y;
+
+        func(&mut child);
+
+
+        let mut lock = self.context.inner.write().unwrap();
+
+        child.current.x -= 1;
+        child.current.y -= 1;
+        child.current.height += 2;
+        child.current.width += 2;
+        let border = child.current;
+
+        lock.draws.push(Draw::Text(
+            StyledText {
+                text: TOP_LEFT.into(),
+                style: Style::default(),
+            },
+            border.top_left(),
+        ));
+        for i in 0..(border.width - 2) {
+            lock.draws.push(Draw::Text(
+                StyledText {
+                    text: HORIZONTAL.into(),
+                    style: Style::default(),
+                },
+                Pos2 {
+                    x: border.x + 1 + i,
+                    y: border.y,
+                },
+            ));
+        }
+
+        lock.draws.push(Draw::Text(
+            StyledText {
+                text: TOP_RIGHT.into(),
+                style: Style::default(),
+            },
+            border.top_right(),
+        ));
+
+        lock.draws.push(Draw::Text(
+            StyledText {
+                text: BOTTOM_LEFT.into(),
+                style: Style::default(),
+            },
+            border.bottom_left(),
+        ));
+        for i in 0..(border.width - 2) {
+            lock.draws.push(Draw::Text(
+                StyledText {
+                    text: HORIZONTAL.into(),
+                    style: Style::default(),
+                },
+                Pos2 {
+                    x: border.x + 1 + i,
+                    y: border.bottom_right().y,
+                },
+            ));
+        }
+
+        lock.draws.push(Draw::Text(
+            StyledText {
+                text: BOTTOM_RIGHT.into(),
+                style: Style::default(),
+            },
+            border.bottom_right(),
+        ));
+
+        for i in 0..(border.height - 2) {
+            lock.draws.push(Draw::Text(
+                StyledText {
+                    text: VERTICAL.into(),
+                    style: Style::default(),
+                },
+                Pos2 {
+                    x: border.x,
+                    y: border.y + 1 + i,
+                },
+            ));
+            lock.draws.push(Draw::Text(
+                StyledText {
+                    text: VERTICAL.into(),
+                    style: Style::default(),
+                },
+                Pos2 {
+                    x: border.bottom_right().x,
+                    y: border.y + 1 + i,
+                },
+            ));
+        }
+        drop(lock);
+
+        self.allocate_space(border);
+    }
+
+    fn allocate_space(&mut self, rect: Rect) -> () {
+        self.current.expand_to_include(&rect);
+
+        //TODO: the rect could start at a different position
+        match self.layout {
+            Layout::Vertical => self.cursor.y += rect.height,
+            Layout::Horizontal => self.cursor.x += rect.width + 1,
+        }
+    }
+
+    pub fn vertical(&mut self, func: impl FnOnce(&mut Ui)) {
+        self.layout(Layout::Vertical, func)
+    }
+    pub fn horizontal(&mut self, func: impl FnOnce(&mut Ui)) {
+        self.layout(Layout::Horizontal, func)
+    }
+
+    pub fn seperator(&mut self) {
+        match self.layout {
+            Layout::Vertical => {
+                let height = self.current.height;
+                let x = self.current.x + self.current.width;
+                self.current.width += 1;
+                self.cursor.x += 1;
+                let mut lock = self.context.inner.write().unwrap();
+                for i in 0..height {
+                    lock.draws.push(Draw::Text(
+                        StyledText {
+                            text: VERTICAL.into(),
+                            style: Style::default(),
+                        },
+                        Pos2 {
+                            x,
+                            y: self.current.y + i,
+                        },
+                    ));
+                }
+            }
+            Layout::Horizontal => {
+                let width = self.current.width;
+                let y = self.current.y + self.current.height;
+                self.current.height += 1;
+                self.cursor.y += 1;
+                let mut lock = self.context.inner.write().unwrap();
+                for i in 0..width {
+                    lock.draws.push(Draw::Text(
+                        StyledText {
+                            text: HORIZONTAL.into(),
+                            style: Style::default(),
+                        },
+                        Pos2 {
+                            x: self.current.x + i,
+                            y,
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
+    fn layout(&mut self, layout: Layout, func: impl FnOnce(&mut Ui)) {
+        let mut ui = self.clone();
+        ui.current = ui.cursor;
+        ui.current.width = 0;
+        ui.current.height = 0;
+        ui.layout = layout;
+        func(&mut ui);
+        self.allocate_space(ui.current)
+    }
+
+    fn draw_gallery(&mut self, gallery: Vec<(Rect, StyledText)>) {
         let mut lock = self.context.inner.write().unwrap();
         lock.draws.reserve(gallery.len());
         for text in gallery {
-            lock.draws.push(Draw::Text(text.1, text.0));
-            self.cursor.y = self.cursor.y.max(text.0.y);
+            lock.draws.push(Draw::Text(text.1, text.0.top_left()));
+
+            match self.layout {
+                Layout::Vertical => self.cursor.y = self.cursor.y.max(text.0.y + text.0.height),
+                Layout::Horizontal => self.cursor.x = self.cursor.x.max(text.0.x + text.0.width),
+            }
+
+            self.current.expand_to_include(&text.0);
         }
-        self.cursor.y += 1;
+        match self.layout {
+            Layout::Vertical => {}
+            Layout::Horizontal => self.cursor.x += 1,
+        }
     }
 
     pub fn button(&mut self, text: impl Into<StyledText>) -> bool {
@@ -178,7 +417,7 @@ impl Ui {
 
     pub fn drop_down(&mut self, title: &str, func: impl FnOnce(&mut Ui)) {}
 
-    fn create_gallery(&mut self, text: StyledText) -> (Rect, Vec<(Pos2, StyledText)>) {
+    fn create_gallery(&self, text: StyledText) -> (Rect, Vec<(Rect, StyledText)>) {
         // todo!();
         let mut rect = self.cursor;
         rect.width = 0;
@@ -192,9 +431,11 @@ impl Ui {
                 line_width += unicode_width::UnicodeWidthChar::width(char).unwrap_or(0) as u16;
             }
             gallery.push((
-                Pos2 {
+                Rect {
                     x: rect.x,
                     y: rect.y + line_num as u16,
+                    width: line_width,
+                    height: 1,
                 },
                 StyledText {
                     text: line.to_owned(),
@@ -206,6 +447,14 @@ impl Ui {
         }
 
         (rect, gallery)
+    }
+
+    pub fn add_horizontal_space(&mut self, space: u16) {
+        self.cursor.x += space;
+        self.clip.x += space;
+        self.clip.width -= space;
+        self.current.width = self.current.width.max(space);
+        // self.
     }
 }
 
@@ -302,6 +551,10 @@ impl StyledText {
         } else {
             self.style.attributes.unset(Attribute::Reverse);
         }
+    }
+
+    pub fn styled(text: String, style: Style) -> Self {
+        Self { text, style }
     }
 }
 
