@@ -1,17 +1,17 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    style::{Attribute, Attributes, StyledContent},
+    style::{Attribute},
     terminal::{
         disable_raw_mode, enable_raw_mode, DisableLineWrap, EnterAlternateScreen,
         LeaveAlternateScreen,
     },
     QueueableCommand,
 };
-use etui::{Context, StyledText, VecI2};
+use etui::{Context, StyledText, math_util::{VecI2, Rect}};
 use roborio::RoborioCom;
 use std::{
-    io::{self, BufWriter, Stdout, Write},
+    io::{self, Stdout, Write},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -20,7 +20,6 @@ use crate::app::App;
 
 mod app;
 pub mod etui;
-pub mod symbols;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
@@ -134,7 +133,7 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
 
     let (x, y) = crossterm::terminal::size()?;
 
-    let mut ctx = Context::new(etui::Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
+    let mut ctx = Context::new(Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
 
     let mut data: Vec<u8> = Vec::new();
     loop {
@@ -225,7 +224,7 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
                         return Ok(());
                     }
                 }
-                ctx.new_event(event);
+                ctx.handle_event(event);
             }
             if last_tick.elapsed() >= tick_rate {
                 last_tick = Instant::now();

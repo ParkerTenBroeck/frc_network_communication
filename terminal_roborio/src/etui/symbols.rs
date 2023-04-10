@@ -231,3 +231,37 @@ pub enum Marker {
     /// Up to 8 points per cell
     Braille,
 }
+
+pub mod pointers {
+    #[derive(Debug, Clone)]
+    pub struct Set {
+        pub up: &'static str,
+        pub up_right: &'static str,
+        pub right: &'static str,
+        pub right_down: &'static str,
+        pub down: &'static str,
+        pub down_left: &'static str,
+        pub left: &'static str,
+        pub left_up: &'static str,
+    }
+
+    pub const TRIANGLE_UP: &str = "▲";
+    pub const TRIANGLE_UP_RIGHT: &str = " ";
+    pub const TRIANGLE_RIGHT: &str = "▶";
+    pub const TRIANGLE_RIGHT_DOWN: &str = " ";
+    pub const TRIANGLE_DOWN: &str = "▼";
+    pub const TRIANGLE_DOWN_LEFT: &str = " ";
+    pub const TRIANGLE_LEFT: &str = "◀";
+    pub const TRIANGLE_LEFT_UP: &str = " ";
+
+    pub static TRIANGLE: Set = Set {
+        up: TRIANGLE_UP,
+        up_right: TRIANGLE_UP_RIGHT,
+        right: TRIANGLE_RIGHT,
+        right_down: TRIANGLE_RIGHT_DOWN,
+        down: TRIANGLE_DOWN,
+        down_left: TRIANGLE_DOWN_LEFT,
+        left: TRIANGLE_LEFT,
+        left_up: TRIANGLE_LEFT_UP,
+    };
+}

@@ -1,9 +1,9 @@
 use crossterm::style::Color;
 use roborio::RoborioCom;
-use std::sync::Arc;
+use std::{collections::{HashMap, HashSet}, sync::Arc, hash::Hasher};
 
 use crate::{
-    etui::{self, Context, Style, StyledText, VecI2},
+    etui::{self, Context, Style, StyledText, math_util::VecI2},
     Log,
 };
 
@@ -135,26 +135,35 @@ impl App {
                         ui.label(format!("{:?}", ui.get_max()));
                         ui.label(format!("{:?}", ui.get_current()));
                     });
-                    ui.with_size(ui.get_max().size(), |ui|{
+                    ui.with_size(ui.get_max().size(), |ui| {
                         ui.seperator();
-                        ui.bordered(|ui|{
-                            ui.vertical(|ui| {
-                                ui.label("Events:");
-                                ui.set_minimum_size(VecI2::new(40, 10));
-                                for (level, msg) in self.log.get_last_n(10) {
-                                    let mut style = Style::default();
-                                    match level {
-                                        crate::LogLevel::Message => {}
-                                        crate::LogLevel::Warning => style.bg = Color::Yellow,
-                                        crate::LogLevel::Error => style.fg = Color::Red,
+                        ui.vertical(|ui| {
+                            ui.bordered(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label("Events:");
+                                    ui.set_minimum_size(VecI2::new(40, 10));
+                                    for (level, msg) in self.log.get_last_n(10) {
+                                        let mut style = Style::default();
+                                        match level {
+                                            crate::LogLevel::Message => {}
+                                            crate::LogLevel::Warning => style.bg = Color::Yellow,
+                                            crate::LogLevel::Error => style.fg = Color::Red,
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.label("->");
+                                            ui.label(StyledText::styled(msg, style))
+                                        });
                                     }
-                                    ui.horizontal(|ui| {
-                                        ui.label("->");
-                                        ui.label(StyledText::styled(msg, style))
-                                    });
-                                }
+                                });
                             });
-                        })
+                            ui.vertical(|ui| {
+                                static bruh: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+                                ui.drop_down(&mut bruh.lock().unwrap(), "Luigi", |ui| {
+                                    ui.label("luigi!!!");
+                                    ui.label("wahoo");
+                                });
+                            });
+                        });
                     });
                 });
             });
