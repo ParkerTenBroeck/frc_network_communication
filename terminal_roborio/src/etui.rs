@@ -7,7 +7,7 @@ use crossterm::{
     style::{Attribute, Attributes, Color},
 };
 
-use self::{symbols::line::*, math_util::{VecI2, Rect}};
+use self::{symbols::line::*, math_util::{VecI2, Rect}, memory::Memory, id::Id};
 
 
 pub mod id;
@@ -27,6 +27,7 @@ struct ContextInner {
     pub event: Option<Event>,
     pub draws: Vec<Draw>,
     pub max_rect: Rect,
+    memory: Memory,
 }
 impl ContextInner {
     fn new(size: Rect) -> ContextInner {
@@ -60,7 +61,9 @@ impl Context {
     }
 
     pub fn take_draw_commands(&mut self, vec: &mut Vec<Draw>) {
-        vec.append(&mut self.inner.write().unwrap().draws);
+        let mut lock = self.inner.write().unwrap();
+        lock.memory.clear_seen();
+        vec.append(&mut lock.draws);
     }
 
     pub fn handle_event(&self, event: Event) {
@@ -131,6 +134,43 @@ impl Ui {
 
     pub fn ctx(&self) -> &Context {
         &self.context
+    }
+
+    pub fn with_memory_or<T: Clone + 'static, F: FnOnce(T, &mut Self)>(&mut self, id: Id, default: T, func: F){
+        let mut lock = self.context.inner.write().unwrap();
+        let res = lock.memory.get_mut_or(id, default);
+        drop(lock);
+
+        if let Ok(val) = res{
+            func(val, self);
+            return;   
+        }
+
+        let mut style =Style{
+            bg: Color::Red,
+            fg: Color::White,
+            ..Default::default()
+        };
+        style.attributes.set(Attribute::RapidBlink);
+        style.attributes.set(Attribute::Underlined);
+        self.label(StyledText::styled(format!("IDCOLLISION: {:?}", id.value()), style));
+    }
+
+    pub fn with_memory_or_make<T: Clone + 'static, F: FnOnce(T, &mut Self)>(&mut self, id: Id, default: impl FnOnce() -> T, func: F){
+        let mut lock = self.context.inner.write().unwrap();
+        let res = lock.memory.get_mut_or(id, default());
+        drop(lock);
+        if let Ok(val) = res{
+            func(val, self);
+            return;   
+        }
+
+        let mut style =Style::default();
+        style.bg = Color::Red;
+        style.fg = Color::White;
+        style.attributes.set(Attribute::RapidBlink);
+        style.attributes.set(Attribute::Underlined);
+        self.label(StyledText::styled(format!("IDCOLLISION: {:?}", id.value()), style));
     }
 
     fn child(&self) -> Ui {
@@ -402,45 +442,48 @@ impl Ui {
 
     pub fn drop_down(
         &mut self,
-        shown: &mut bool,
         title: impl Into<StyledText>,
         func: impl FnOnce(&mut Ui),
     ) {
+
         let mut text: StyledText = title.into();
-        if *shown {
-            text.text.push_str(symbols::pointers::TRIANGLE_DOWN)
-        } else {
-            text.text.push_str(symbols::pointers::TRIANGLE_RIGHT);
-        }
-
-        if self.button(text) {
-            *shown = !*shown;
-        }
-
-        let layout = self.layout;
-        let used = self.horizontal(|ui| {
-            ui.add_horizontal_space(1);
-            ui.layout(layout, |ui| {
-                if *shown {
-                    func(ui)
-                }
-                ui.current
-            })
+        let id = Id::new(&text.text);
+        self.with_memory_or(id, false, move |val, ui|{
+            if val {
+                text.text.push_str(symbols::pointers::TRIANGLE_DOWN)
+            } else {
+                text.text.push_str(symbols::pointers::TRIANGLE_RIGHT);
+            }
+    
+            if ui.button(text) {
+                ui.context.inner.write().unwrap().memory.insert(id, !val);
+            }
+    
+            let layout = ui.layout;
+            let used = ui.horizontal(|ui| {
+                ui.add_horizontal_space(1);
+                ui.layout(layout, |ui| {
+                    if val {
+                        func(ui)
+                    }
+                    ui.current
+                })
+            });
+    
+            let mut lock = ui.context.inner.write().unwrap();
+            for i in 0..used.height {
+                lock.draws.push(Draw::Text(
+                    StyledText {
+                        text: VERTICAL.into(),
+                        style: Style::default(),
+                    },
+                    VecI2 {
+                        x: used.x - 1,
+                        y: used.y + i,
+                    },
+                ));
+            }
         });
-
-        let mut lock = self.context.inner.write().unwrap();
-        for i in 0..used.height {
-            lock.draws.push(Draw::Text(
-                StyledText {
-                    text: VERTICAL.into(),
-                    style: Style::default(),
-                },
-                VecI2 {
-                    x: used.x - 1,
-                    y: used.y + i,
-                },
-            ));
-        }
     }
 
     fn create_gallery(&self, text: StyledText) -> (Rect, Vec<(Rect, StyledText)>) {

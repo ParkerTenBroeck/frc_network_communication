@@ -157,8 +157,17 @@ impl App {
                                 });
                             });
                             ui.vertical(|ui| {
-                                static bruh: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
-                                ui.drop_down(&mut bruh.lock().unwrap(), "Luigi", |ui| {
+                                ui.drop_down("Luigi", |ui| {
+                                    ui.label("luigi!!!");
+                                    ui.label("wahoo");
+                                });
+                                ui.add_vertical_space(1);
+                                ui.drop_down("Luigi2", |ui| {
+                                    ui.label("luigi!!!");
+                                    ui.label("wahoo");
+                                });
+                                ui.add_vertical_space(1);
+                                ui.drop_down("Luigi3!!", |ui| {
                                     ui.label("luigi!!!");
                                     ui.label("wahoo");
                                 });

@@ -180,6 +180,18 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
                         last_position = Some(next);
                         // continue;
                     }
+                    //todo make this better
+                    if last_attr != Some(style.attributes) {
+                        let mut attr = style.attributes;
+                        attr.set(Attribute::Reset);
+                        data.queue(crossterm::style::SetAttributes(attr))?;
+                        last_attr = Some(style.attributes);
+                        data.queue(crossterm::style::SetForegroundColor(style.fg))?;
+                        last_fg = Some(style.fg);
+                        data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
+                        last_bg = Some(style.bg);
+                    }
+
                     if last_fg != Some(style.fg) {
                         data.queue(crossterm::style::SetForegroundColor(style.fg))?;
                         last_fg = Some(style.fg);
@@ -187,13 +199,6 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
                     if last_bg != Some(style.bg) {
                         data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
                         last_bg = Some(style.bg);
-                    }
-
-                    if last_attr != Some(style.attributes) {
-                        let mut attr = style.attributes;
-                        attr.set(Attribute::Reset);
-                        data.queue(crossterm::style::SetAttributes(attr))?;
-                        last_attr = Some(style.attributes);
                     }
 
                     data.queue(crossterm::style::Print(text))?;
@@ -207,11 +212,11 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
         // let chars:Vec<char> =  data.iter().map(|c| (*c as char)).collect();
         // println!("{:?}",chars);
 
-        loop {
-            let timeout = tick_rate
-                .checked_sub(last_tick.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0));
-            if crossterm::event::poll(timeout)? {
+        // loop {
+            // let timeout = tick_rate
+            //     .checked_sub(last_tick.elapsed())
+            //     .unwrap_or_else(|| Duration::from_secs(0));
+            // if crossterm::event::poll(timeout)? {
                 let event = event::read()?;
                 // if app.on_event(event) {
                 //     return Ok(());
@@ -225,11 +230,11 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
                     }
                 }
                 ctx.handle_event(event);
-            }
-            if last_tick.elapsed() >= tick_rate {
-                last_tick = Instant::now();
-                break;
-            }
-        }
+            // }
+            // if last_tick.elapsed() >= tick_rate {
+            //     last_tick = Instant::now();
+            //     break;
+            // }
+        // }
     }
 }
