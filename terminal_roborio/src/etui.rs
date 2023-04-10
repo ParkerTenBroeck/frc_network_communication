@@ -1,19 +1,21 @@
-use std::{
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use crossterm::{
     event::{Event, MouseButton, MouseEvent, MouseEventKind},
     style::{Attribute, Attributes, Color},
 };
 
-use self::{symbols::line::*, math_util::{VecI2, Rect}, memory::Memory, id::Id};
-
+use self::{
+    id::Id,
+    math_util::{Rect, VecI2},
+    memory::Memory,
+    symbols::line::*,
+};
 
 pub mod id;
+pub mod math_util;
 pub mod memory;
 pub mod symbols;
-pub mod math_util;
 
 #[derive(Debug)]
 pub enum Draw {
@@ -22,11 +24,57 @@ pub enum Draw {
     Text(StyledText, VecI2),
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButtonState {
+    #[default]
+    Unpressed,
+    Down,
+    Held,
+    Up,
+    Drag,
+}
+
+impl MouseButtonState {
+    pub fn is_down(&self) -> bool {
+        match self {
+            MouseButtonState::Unpressed => false,
+            MouseButtonState::Down => true,
+            MouseButtonState::Held => true,
+            MouseButtonState::Up => false,
+            MouseButtonState::Drag => true,
+        }
+    }
+
+    pub fn next_state(&mut self) {
+        match self {
+            MouseButtonState::Unpressed => {}
+            MouseButtonState::Down => *self = MouseButtonState::Held,
+            MouseButtonState::Held => {}
+            MouseButtonState::Up => *self = MouseButtonState::Unpressed,
+            MouseButtonState::Drag => {}
+        }
+    }
+
+    pub fn is_up(&self) -> bool {
+        !self.is_down()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MouseState {
+    pub position: VecI2,
+    pub left: MouseButtonState,
+    pub middle: MouseButtonState,
+    pub right: MouseButtonState,
+    pub scroll: i16,
+}
+
 #[derive(Debug, Default)]
 struct ContextInner {
-    pub event: Option<Event>,
-    pub draws: Vec<Draw>,
-    pub max_rect: Rect,
+    event: Option<Event>,
+    mouse: Option<MouseState>,
+    draws: Vec<Draw>,
+    max_rect: Rect,
     memory: Memory,
 }
 impl ContextInner {
@@ -60,8 +108,15 @@ impl Context {
         func(&mut ui);
     }
 
-    pub fn take_draw_commands(&mut self, vec: &mut Vec<Draw>) {
+    pub fn finish_frame(&mut self, vec: &mut Vec<Draw>) {
         let mut lock = self.inner.write().unwrap();
+
+        if let Some(mouse) = &mut lock.mouse {
+            mouse.left.next_state();
+            mouse.middle.next_state();
+            mouse.right.next_state();
+        }
+
         lock.memory.clear_seen();
         vec.append(&mut lock.draws);
     }
@@ -71,6 +126,40 @@ impl Context {
         match event {
             Event::Resize(x, y) => {
                 lock.max_rect = Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y))
+            }
+            Event::Mouse(event) => {
+                let mouse = lock.mouse.get_or_insert(MouseState::default());
+                mouse.position.x = event.column;
+                mouse.position.y = event.row;
+                match event.kind {
+                    MouseEventKind::Down(button)
+                    | MouseEventKind::Up(button)
+                    | MouseEventKind::Drag(button) => {
+                        let button = match button {
+                            MouseButton::Left => &mut mouse.left,
+                            MouseButton::Right => &mut mouse.right,
+                            MouseButton::Middle => &mut mouse.middle,
+                        };
+                        match event.kind {
+                            MouseEventKind::Down(_) => {
+                                *button = MouseButtonState::Down;
+                            }
+                            MouseEventKind::Up(_) => {
+                                *button = MouseButtonState::Up;
+                            }
+                            MouseEventKind::Drag(_) => {
+                                *button = MouseButtonState::Drag;
+                            }
+                            _ => {}
+                        }
+                    }
+                    MouseEventKind::Moved => {}
+                    MouseEventKind::ScrollDown => mouse.scroll -= 1,
+                    MouseEventKind::ScrollUp => mouse.scroll += 1,
+                }
+                // mouse.kind
+                // mouse.modifiers
+                // lock.last_observed_mouse_pos = Some(VecI2::new(mouse.row, mouse.column));
             }
             _ => {}
         }
@@ -89,6 +178,37 @@ impl Context {
 
     pub fn clear_event(&self) {
         self.inner.write().unwrap().event = None
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Response{
+    clicked: bool,
+    pressed: bool,
+    hovered: bool,
+    released: bool,
+    dragged: bool,
+}
+
+impl Response{
+    pub fn clicked(&self) -> bool{
+        self.clicked
+    }
+
+    pub fn pressed(&self) -> bool{
+        self.pressed
+    }
+
+    pub fn hovered(&self) -> bool{
+        self.hovered
+    }
+
+    pub fn released(&self) -> bool{
+        self.released
+    }
+
+    fn nothing() -> Response {
+        Self::default()
     }
 }
 
@@ -136,41 +256,57 @@ impl Ui {
         &self.context
     }
 
-    pub fn with_memory_or<T: Clone + 'static, F: FnOnce(T, &mut Self)>(&mut self, id: Id, default: T, func: F){
+    pub fn with_memory_or<T: Clone + 'static, F: FnOnce(T, &mut Self)>(
+        &mut self,
+        id: Id,
+        default: T,
+        func: F,
+    ) {
         let mut lock = self.context.inner.write().unwrap();
         let res = lock.memory.get_mut_or(id, default);
         drop(lock);
 
-        if let Ok(val) = res{
+        if let Ok(val) = res {
             func(val, self);
-            return;   
+            return;
         }
 
-        let mut style =Style{
+        let mut style = Style {
             bg: Color::Red,
             fg: Color::White,
             ..Default::default()
         };
         style.attributes.set(Attribute::RapidBlink);
         style.attributes.set(Attribute::Underlined);
-        self.label(StyledText::styled(format!("IDCOLLISION: {:?}", id.value()), style));
+        self.label(StyledText::styled(
+            format!("IDCOLLISION: {:?}", id.value()),
+            style,
+        ));
     }
 
-    pub fn with_memory_or_make<T: Clone + 'static, F: FnOnce(T, &mut Self)>(&mut self, id: Id, default: impl FnOnce() -> T, func: F){
+    pub fn with_memory_or_make<T: Clone + 'static, F: FnOnce(T, &mut Self)>(
+        &mut self,
+        id: Id,
+        default: impl FnOnce() -> T,
+        func: F,
+    ) {
         let mut lock = self.context.inner.write().unwrap();
         let res = lock.memory.get_mut_or(id, default());
         drop(lock);
-        if let Ok(val) = res{
+        if let Ok(val) = res {
             func(val, self);
-            return;   
+            return;
         }
 
-        let mut style =Style::default();
+        let mut style = Style::default();
         style.bg = Color::Red;
         style.fg = Color::White;
         style.attributes.set(Attribute::RapidBlink);
         style.attributes.set(Attribute::Underlined);
-        self.label(StyledText::styled(format!("IDCOLLISION: {:?}", id.value()), style));
+        self.label(StyledText::styled(
+            format!("IDCOLLISION: {:?}", id.value()),
+            style,
+        ));
     }
 
     fn child(&self) -> Ui {
@@ -408,57 +544,59 @@ impl Ui {
         }
     }
 
-    pub fn button(&mut self, text: impl Into<StyledText>) -> bool {
-        let (rect, mut gallery) = self.create_gallery(text.into());
-        let pressed = if let Some(Event::Mouse(MouseEvent {
-            kind, column, row, ..
-        })) = self.context.inner.read().unwrap().event
-        {
-            if rect.contains(column, row) {
-                match kind {
-                    MouseEventKind::Down(_) | MouseEventKind::Drag(MouseButton::Left) => {
-                        for item in &mut gallery {
-                            item.1.bg(Color::Blue);
-                        }
-                    }
-                    MouseEventKind::Up(_) | MouseEventKind::Moved => {
-                        for item in &mut gallery {
-                            item.1.underline(true);
-                        }
-                    }
-                    _ => {}
+    pub fn interact(&mut self, area: Rect) -> Response{
+        if let Some(mouse) = &self.context.inner.read().unwrap().mouse{
+            if area.contains(mouse.position){
+                Response{
+                    clicked: mouse.left == MouseButtonState::Down,
+                    pressed: mouse.left.is_down(),
+                    hovered: true,
+                    released: mouse.left == MouseButtonState::Up,
+                    dragged: mouse.left == MouseButtonState::Drag,
                 }
-
-                matches!(kind, MouseEventKind::Down(MouseButton::Left))
-            } else {
-                false
+            }else{
+                Response::nothing()
             }
-        } else {
-            false
-        };
-        self.draw_gallery(gallery);
-        pressed
+        }else{
+            Response::nothing()
+        }
     }
 
-    pub fn drop_down(
-        &mut self,
-        title: impl Into<StyledText>,
-        func: impl FnOnce(&mut Ui),
-    ) {
+    pub fn button(&mut self, text: impl Into<StyledText>) -> Response {
+        let (area, mut gallery) = self.create_gallery(text.into());
+        
+        let response = self.interact(area);
 
+        if response.pressed(){
+            for item in &mut gallery {
+                item.1.bg(Color::Blue);
+            }
+        }
+
+        if response.hovered(){
+            for item in &mut gallery {
+                item.1.underline(true);
+            }
+        }
+        
+        self.draw_gallery(gallery);
+        response
+    }
+
+    pub fn drop_down(&mut self, title: impl Into<StyledText>, func: impl FnOnce(&mut Ui)) {
         let mut text: StyledText = title.into();
         let id = Id::new(&text.text);
-        self.with_memory_or(id, false, move |val, ui|{
+        self.with_memory_or(id, false, move |val, ui| {
             if val {
                 text.text.push_str(symbols::pointers::TRIANGLE_DOWN)
             } else {
                 text.text.push_str(symbols::pointers::TRIANGLE_RIGHT);
             }
-    
-            if ui.button(text) {
+
+            if ui.button(text).clicked() {
                 ui.context.inner.write().unwrap().memory.insert(id, !val);
             }
-    
+
             let layout = ui.layout;
             let used = ui.horizontal(|ui| {
                 ui.add_horizontal_space(1);
@@ -469,7 +607,7 @@ impl Ui {
                     ui.current
                 })
             });
-    
+
             let mut lock = ui.context.inner.write().unwrap();
             for i in 0..used.height {
                 lock.draws.push(Draw::Text(

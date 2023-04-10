@@ -1,8 +1,6 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
-use super::id::{Id, hash, TypeId};
-
-
+use super::id::{hash, Id, TypeId};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct IdCollision;
@@ -10,26 +8,29 @@ pub struct IdCollision;
 #[derive(Default, Debug)]
 pub struct Memory {
     map: HashMap<u64, Box<dyn std::any::Any>>,
-    seen: HashSet<u64>
+    seen: HashSet<u64>,
 }
-
 
 impl Memory {
     pub fn get_mut_or<T: Clone + 'static>(&mut self, id: Id, default: T) -> Result<T, IdCollision> {
-        self.get_mut_or_create(id, ||default)
+        self.get_mut_or_create(id, || default)
     }
 
-    pub fn get_mut_or_create<T: Clone + 'static>(&mut self, id: Id, default: impl FnOnce() -> T) -> Result<T, IdCollision> {
+    pub fn get_mut_or_create<T: Clone + 'static>(
+        &mut self,
+        id: Id,
+        default: impl FnOnce() -> T,
+    ) -> Result<T, IdCollision> {
         let hash = hash(TypeId::of::<T>(), id);
         self.seen(hash)?;
         self.map.entry(hash).or_insert_with(|| Box::new(default()));
-        if let Some(item) = self.map.get_mut(&hash){
+        if let Some(item) = self.map.get_mut(&hash) {
             if let Some(item) = item.downcast_mut::<T>() {
                 Ok(item.clone())
             } else {
                 unreachable!()
             }
-        }else{
+        } else {
             unreachable!()
         }
     }
@@ -37,13 +38,13 @@ impl Memory {
     pub fn get_mut<T: Clone + 'static>(&mut self, id: Id) -> Result<Option<T>, IdCollision> {
         let hash = hash(TypeId::of::<T>(), id);
         self.seen(hash)?;
-        if let Some(item) = self.map.get_mut(&hash){
+        if let Some(item) = self.map.get_mut(&hash) {
             if let Some(item) = item.downcast_mut::<T>() {
                 Ok(Some(item.clone()))
             } else {
                 Ok(None)
             }
-        }else{
+        } else {
             Ok(None)
         }
     }
@@ -54,24 +55,23 @@ impl Memory {
         self.map.insert(hash, Box::new(default));
     }
 
-    fn seen(&mut self, value: u64) -> Result<(),IdCollision>{
-        if self.seen.contains(&value){
+    fn seen(&mut self, value: u64) -> Result<(), IdCollision> {
+        if self.seen.contains(&value) {
             Err(IdCollision)
-        }else{
+        } else {
             self.seen.insert(value);
             Ok(())
         }
     }
 
-    pub fn clear_seen(&mut self){
+    pub fn clear_seen(&mut self) {
         self.seen.clear();
     }
 }
 
 #[test]
 pub fn test() {
-
-use crate::etui::math_util::VecI2;
+    use crate::etui::math_util::VecI2;
     let mut test = Memory::default();
     test.insert(Id::new("Bruh"), 12i32);
     test.insert(Id::new("Nice"), VecI2::new(420, 69));

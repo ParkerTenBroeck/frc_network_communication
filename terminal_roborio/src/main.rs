@@ -1,14 +1,17 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    style::{Attribute},
+    style::Attribute,
     terminal::{
         disable_raw_mode, enable_raw_mode, DisableLineWrap, EnterAlternateScreen,
         LeaveAlternateScreen,
     },
     QueueableCommand,
 };
-use etui::{Context, StyledText, math_util::{VecI2, Rect}};
+use etui::{
+    math_util::{Rect, VecI2},
+    Context, StyledText,
+};
 use roborio::RoborioCom;
 use std::{
     io::{self, Stdout, Write},
@@ -145,7 +148,7 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
         ))?;
 
         let mut draws = Vec::new();
-        ctx.take_draw_commands(&mut draws);
+        ctx.finish_frame(&mut draws);
 
         let mut last_fg = None;
         let mut last_bg = None;
@@ -208,33 +211,29 @@ fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result
 
         stdout.write_all(&data)?;
         stdout.flush()?;
-        println!("{:#?}", data.len());
-        // let chars:Vec<char> =  data.iter().map(|c| (*c as char)).collect();
-        // println!("{:?}",chars);
 
+        ctx.clear_event();
         // loop {
-            // let timeout = tick_rate
-            //     .checked_sub(last_tick.elapsed())
-            //     .unwrap_or_else(|| Duration::from_secs(0));
-            // if crossterm::event::poll(timeout)? {
-                let event = event::read()?;
-                // if app.on_event(event) {
-                //     return Ok(());
-                // }
-                if let Event::Key(key) = event {
-                    if let event::KeyEvent {
-                        code: KeyCode::Esc, ..
-                    } = key
-                    {
-                        return Ok(());
-                    }
+        let timeout = tick_rate
+            .checked_sub(last_tick.elapsed())
+            .unwrap_or_else(|| Duration::from_secs(0));
+        if crossterm::event::poll(timeout)? {
+            let event = event::read()?;
+
+            if let Event::Key(key) = event {
+                if let event::KeyEvent {
+                    code: KeyCode::Esc, ..
+                } = key
+                {
+                    return Ok(());
                 }
-                ctx.handle_event(event);
-            // }
-            // if last_tick.elapsed() >= tick_rate {
-            //     last_tick = Instant::now();
-            //     break;
-            // }
+            }
+            ctx.handle_event(event);
+            // break;
+        }
+        if last_tick.elapsed() >= tick_rate {
+            last_tick = Instant::now();
+        }
         // }
     }
 }

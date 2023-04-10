@@ -1,4 +1,3 @@
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Rect {
     pub x: u16,
@@ -72,11 +71,11 @@ impl Rect {
         true
     }
 
-    pub fn contains(&self, column: u16, row: u16) -> bool {
-        self.x <= column
-            && (self.x.saturating_add(self.width)) > column
-            && self.y <= row
-            && (self.y.saturating_add(self.height)) > row
+    pub fn contains(&self, pos: VecI2) -> bool {
+        self.x <= pos.x
+            && (self.x.saturating_add(self.width)) > pos.x
+            && self.y <= pos.y
+            && (self.y.saturating_add(self.height)) > pos.y
     }
 
     pub fn top_left(&self) -> VecI2 {

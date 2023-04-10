@@ -1,9 +1,13 @@
 use crossterm::style::Color;
 use roborio::RoborioCom;
-use std::{collections::{HashMap, HashSet}, sync::Arc, hash::Hasher};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hasher,
+    sync::Arc,
+};
 
 use crate::{
-    etui::{self, Context, Style, StyledText, math_util::VecI2},
+    etui::{self, math_util::VecI2, Context, Style, StyledText},
     Log,
 };
 
@@ -125,7 +129,7 @@ impl App {
                                 style,
                             ))
                         });
-                        if ui.button("こんにちは世界!") {
+                        if ui.button("こんにちは世界!").pressed() {
                             ui.label("UNICODEEEEE")
                         }
                         ui.label(format!("{:#?}", ui.ctx().get_event()));
