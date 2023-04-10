@@ -2,7 +2,10 @@ use crossterm::style::Color;
 use roborio::RoborioCom;
 use std::sync::Arc;
 
-use crate::{etui::{self, Context, Style, StyledText}, Log};
+use crate::{
+    etui::{self, Context, Style, StyledText, VecI2},
+    Log,
+};
 
 enum InputMode {
     Normal,
@@ -53,7 +56,6 @@ impl App {
                 msg.rapid_blink(true);
                 ui.label(msg);
             });
-
 
             ui.bordered(|ui| {
                 ui.horizontal(|ui| {
@@ -110,39 +112,52 @@ impl App {
                             self.driverstation.get_udp_bytes_received()
                         ));
 
-                        ui.horizontal(|ui|{
+                        ui.horizontal(|ui| {
                             ui.label("Alliance: ");
                             let mut style = Style::default();
-                            if self.driverstation.get_alliance_station().is_red(){
+                            if self.driverstation.get_alliance_station().is_red() {
                                 style.fg = Color::Red;
-                            }else{
+                            } else {
                                 style.fg = Color::DarkBlue;
                             }
-                            ui.label(StyledText::styled(format!("{:?}", self.driverstation.get_alliance_station()), style))
+                            ui.label(StyledText::styled(
+                                format!("{:?}", self.driverstation.get_alliance_station()),
+                                style,
+                            ))
                         });
                         if ui.button("こんにちは世界!") {
                             ui.label("UNICODEEEEE")
                         }
                         ui.label(format!("{:#?}", ui.ctx().get_event()));
-                        ui.seperator();
-                    });
 
-                    ui.vertical(|ui| {
-                        ui.label("Events: ");
-                        ui.add_horizontal_space(1);
-                        for (level, msg) in self.log.get_last_n(10){
-                            let mut style = Style::default();
-                            match level{
-                                crate::LogLevel::Message => {},
-                                crate::LogLevel::Warning => style.bg = Color::Yellow,
-                                crate::LogLevel::Error => style.fg = Color::Red,
-                            }
-                            ui.label(StyledText::styled(msg, style))
-                        }
+                        ui.label(format!("{:?}", ui.get_clip()));
+                        ui.label(format!("{:?}", ui.get_cursor()));
+                        ui.label(format!("{:?}", ui.get_max()));
+                        ui.label(format!("{:?}", ui.get_current()));
+                    });
+                    ui.with_size(ui.get_max().size(), |ui|{
+                        ui.seperator();
+                        ui.bordered(|ui|{
+                            ui.vertical(|ui| {
+                                ui.label("Events:");
+                                ui.set_minimum_size(VecI2::new(40, 10));
+                                for (level, msg) in self.log.get_last_n(10) {
+                                    let mut style = Style::default();
+                                    match level {
+                                        crate::LogLevel::Message => {}
+                                        crate::LogLevel::Warning => style.bg = Color::Yellow,
+                                        crate::LogLevel::Error => style.fg = Color::Red,
+                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label("->");
+                                        ui.label(StyledText::styled(msg, style))
+                                    });
+                                }
+                            });
+                        })
                     });
                 });
             });
-
         });
     }
 }

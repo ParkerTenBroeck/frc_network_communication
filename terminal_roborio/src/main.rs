@@ -2,10 +2,13 @@ use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     style::{Attribute, Attributes, StyledContent},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, DisableLineWrap, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
     QueueableCommand,
 };
-use etui::{Context, StyledText};
+use etui::{Context, StyledText, VecI2};
 use roborio::RoborioCom;
 use std::{
     io::{self, BufWriter, Stdout, Write},
@@ -20,18 +23,18 @@ pub mod etui;
 pub mod symbols;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogLevel{
+pub enum LogLevel {
     Message,
     Warning,
     Error,
 }
 
 #[derive(Debug, Default)]
-pub struct Log{
-    log: std::sync::Mutex<Vec<(LogLevel, String)>>
+pub struct Log {
+    log: std::sync::Mutex<Vec<(LogLevel, String)>>,
 }
 
-impl Log{
+impl Log {
     pub fn message(&self, msg: impl Into<String>) {
         self.log(msg, LogLevel::Message)
     }
@@ -41,14 +44,14 @@ impl Log{
     pub fn error(&self, msg: impl Into<String>) {
         self.log(msg, LogLevel::Error)
     }
-    pub fn log(&self, msg: impl Into<String>, level: LogLevel){
+    pub fn log(&self, msg: impl Into<String>, level: LogLevel) {
         self.log.lock().unwrap().push((level, msg.into()))
     }
-    pub fn get_last_n(&self, amount: usize) -> Vec<(LogLevel, String)>{
+    pub fn get_last_n(&self, amount: usize) -> Vec<(LogLevel, String)> {
         let mut bruh = Vec::with_capacity(amount);
         let lock = self.log.lock().unwrap();
         let start = lock.len().saturating_sub(amount);
-        for log in &lock[start..]{
+        for log in &lock[start..] {
             bruh.push(log.clone())
         }
         bruh
@@ -59,40 +62,37 @@ fn main() -> Result<(), io::Error> {
     let driverstation = Arc::new(RoborioCom::default());
     let log = Arc::new(Log::default());
     let send = log.clone();
-    _ = driverstation.set_error_handler(move |_com,error|{
-        send.error(format!("{:?}", error))
-    });
+    _ = driverstation.set_error_handler(move |_com, error| send.error(format!("{:?}", error)));
     let send = log.clone();
-    _ = driverstation.set_restart_rio_hook(move ||{
+    _ = driverstation.set_restart_rio_hook(move || {
         send.message("Hook: Restart Rio");
     });
     let send = log.clone();
-    _ = driverstation.set_restart_code_hook(move ||{
+    _ = driverstation.set_restart_code_hook(move || {
         send.message("Hook: Restart Rio Code");
     });
     let send = log.clone();
-    _ = driverstation.set_estop_hook(move ||{
+    _ = driverstation.set_estop_hook(move || {
         send.message("Hook: Estop");
     });
     let send = log.clone();
-    _ = driverstation.set_disable_hook(move ||{
+    _ = driverstation.set_disable_hook(move || {
         send.message("Hook: Disable");
     });
     let send = log.clone();
-    _ = driverstation.set_teleop_hook(move ||{
+    _ = driverstation.set_teleop_hook(move || {
         send.message("Hook: Teleop");
     });
     let send = log.clone();
-    _ = driverstation.set_auton_hook(move ||{
+    _ = driverstation.set_auton_hook(move || {
         send.message("Hook: Auton");
     });
     let send = log.clone();
-    _ = driverstation.set_test_hook(move ||{
+    _ = driverstation.set_test_hook(move || {
         send.message("Hook: Test");
     });
     RoborioCom::start_daemon(driverstation.clone());
     // driverstation
-    
 
     let child = std::process::Command::new("avahi-publish-service")
         .args(["roboRIO-1114-FRC", "_ni-rt._tcp", "1110", "\"ROBORIO\""])
@@ -113,6 +113,7 @@ fn main() -> Result<(), io::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, DisableLineWrap)?;
     execute!(stdout, crossterm::cursor::Hide)?;
 
     let app = App::new(driverstation, log);
@@ -130,7 +131,10 @@ fn main() -> Result<(), io::Error> {
 
 fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result<()> {
     let mut last_tick = Instant::now();
-    let mut ctx = Context::default();
+
+    let (x, y) = crossterm::terminal::size()?;
+
+    let mut ctx = Context::new(etui::Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
 
     let mut data: Vec<u8> = Vec::new();
     loop {
