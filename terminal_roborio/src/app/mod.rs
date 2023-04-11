@@ -55,6 +55,12 @@ impl App {
     pub fn ui(&mut self, ctx: &etui::Context) {
         self.driverstation.observe_robot_code(true);
         Context::frame(ctx, |ui| {
+            test_layout_text(ui);
+
+            if true {
+                return;
+            }
+
             ui.bordered(|ui| {
                 let mut msg = StyledText::new("Press esc to exit");
                 msg.rapid_blink(true);
@@ -175,6 +181,12 @@ impl App {
                                     ui.label("luigi!!!");
                                     ui.label("wahoo");
                                 });
+
+                                ui.tabbed_area(
+                                    etui::id::Id::new("TABBS"),
+                                    ["Bruh1", "Bruh2", "Bruh3"],
+                                    |tab, ui| ui.label(format!("tab: {}", tab)),
+                                );
                             });
                         });
                     });
@@ -182,4 +194,162 @@ impl App {
             });
         });
     }
+}
+
+fn test_layout_text(ui: &mut etui::Ui) {
+    use etui::Layout::*;
+
+    ui.tabbed_area(
+        etui::id::Id::new("TABS"),
+        ["Vertical", "Horizontal"],
+        |tab, ui| {
+            ui.bordered(|ui| {
+                ui.with_size(ui.get_max().size(), |ui| {
+                    if tab == 1 {
+                        
+                        let max = ui.get_max();
+                        
+                        ui.layout(TopLeftHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopLeft\nHorizontal");
+                                ui.label("TopLeftHorizontal");
+                            });
+                        });
+
+                        ui.layout(BottomLeftHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopLeft\nHorizontal");
+                                ui.label("TopLeftHorizontal");
+                            });
+                        });
+
+                        ui.set_max(max);
+
+                        ui.layout(TopRightHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopRight\nHorizontal");
+                                ui.label("TopRightHorizontal");
+                            });
+                        });
+
+                        ui.set_max(max);
+
+                        ui.layout(BottomRightHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("BottomRight\nHorizontal");
+                                ui.label("BottomRightHorizontal");
+                            });
+                        });
+                    } else {
+
+                        let max = ui.get_max();
+
+                        ui.layout(TopLeftVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopLeft\nVertical");
+                                ui.label("TopLeftVertical");
+                            });
+                        });
+
+                        ui.layout(BottomLeftVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("BottomLeft\nVertical");
+                                ui.label("BottomLeftVertical");
+                            });
+                        });
+
+                        ui.set_max(max);
+
+                        ui.layout(TopRightVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopRight\nVertical");
+                                ui.label("TopRightVertical");
+                            });
+                        });
+
+                        ui.set_max(max);
+
+                        ui.layout(BottomRightVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("BottomRight\nVertical");
+                                ui.label("BottomRightVertical");
+                            });
+                        });
+                    }
+                });
+            });
+        },
+    );
+}
+
+fn test_layout_tabs(ui: &mut etui::Ui) {
+    use etui::Layout::*;
+
+    ui.tabbed_area(
+        etui::id::Id::new("TABS"),
+        ["Vertical", "Horizontal"],
+        |tab, ui| {
+            ui.bordered(|ui| {
+                ui.with_size(ui.get_max().size(), |ui| {
+                    if tab == 1 {
+                        ui.layout(TopLeftHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopLeft\nHorizontal");
+                                ui.label("TopLeftHorizontal");
+                            });
+                        });
+
+                        ui.layout(BottomLeftHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopLeft\nHorizontal");
+                                ui.label("TopLeftHorizontal");
+                            });
+                        });
+
+                        ui.layout(TopRightHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopRight\nHorizontal");
+                                ui.label("TopRightHorizontal");
+                            });
+                        });
+
+                        ui.layout(BottomRightHorizontal, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("BottomRightHorizontal");
+                                ui.label("BottomRightHorizontal");
+                            });
+                        });
+                    } else {
+                        ui.layout(TopLeftVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopLeft\nVertical");
+                                ui.label("TopLeftVertical");
+                            });
+                        });
+
+                        ui.layout(BottomLeftVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("BottomLeft\nVertical");
+                                ui.label("BottomLeftVertical");
+                            });
+                        });
+
+                        ui.layout(TopRightVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("TopRight\nVertical");
+                                ui.label("TopRightVertical");
+                            });
+                        });
+
+                        ui.layout(BottomRightVertical, |ui| {
+                            ui.bordered(|ui| {
+                                ui.label("BottomRight\nVertical");
+                                ui.label("BottomRightVertical");
+                            });
+                        });
+                    }
+                });
+            });
+        },
+    );
 }

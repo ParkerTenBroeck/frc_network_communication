@@ -119,8 +119,9 @@ fn main() -> Result<(), io::Error> {
     execute!(stdout, crossterm::cursor::Hide)?;
 
     let app = App::new(driverstation, log);
-    let res = run_app(&mut stdout, app, std::time::Duration::from_millis(33));
+    let res = run_app(stdout, app, std::time::Duration::from_millis(33));
 
+    let mut stdout = io::stdout();
     // restore terminal
     disable_raw_mode()?;
     execute!(stdout, LeaveAlternateScreen, DisableMouseCapture)?;
@@ -128,112 +129,133 @@ fn main() -> Result<(), io::Error> {
 
     drop(child);
 
-    res
+    match res {
+        AppResult::Ok(ok) => Ok(ok),
+        AppResult::Err(err) => Err(err),
+        AppResult::Panic(panic) => std::panic::resume_unwind(panic),
+    }
 }
 
-fn run_app(stdout: &mut Stdout, mut app: App, tick_rate: Duration) -> io::Result<()> {
-    let mut last_tick = Instant::now();
+fn run_app(
+    mut stdout: Stdout,
+    mut app: App,
+    tick_rate: Duration,
+) -> AppResult<(), io::Error, Box<dyn std::any::Any + Send + 'static>> {
+    let res: Result<io::Result<()>, _> = std::panic::catch_unwind(move || {
+        let mut last_tick = Instant::now();
 
-    let (x, y) = crossterm::terminal::size()?;
+        let (x, y) = crossterm::terminal::size()?;
 
-    let mut ctx = Context::new(Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
+        let mut ctx = Context::new(Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
 
-    let mut data: Vec<u8> = Vec::new();
-    loop {
-        data.clear();
-        app.ui(&ctx);
+        let mut data: Vec<u8> = Vec::new();
+        loop {
+            data.clear();
+            app.ui(&ctx);
 
-        data.queue(crossterm::terminal::Clear(
-            crossterm::terminal::ClearType::All,
-        ))?;
+            data.queue(crossterm::terminal::Clear(
+                crossterm::terminal::ClearType::All,
+            ))?;
 
-        let mut draws = Vec::new();
-        ctx.finish_frame(&mut draws);
+            let mut draws = Vec::new();
+            ctx.finish_frame(&mut draws);
 
-        let mut last_fg = None;
-        let mut last_bg = None;
-        let mut last_attr = None;
-        let mut last_position = None;
+            let mut last_fg = None;
+            let mut last_bg = None;
+            let mut last_attr = None;
+            let mut last_position = None;
 
-        for items in draws {
-            match items {
-                etui::Draw::ClearAll(_) => todo!(),
-                etui::Draw::Clear(_, _) => todo!(),
-                etui::Draw::Text(text, start) => {
-                    let StyledText { text, style } = text;
+            for items in draws {
+                match items {
+                    etui::Draw::ClearAll(_) => todo!(),
+                    etui::Draw::Clear(_, _) => todo!(),
+                    etui::Draw::Text(text, start) => {
+                        let StyledText { text, style } = text;
 
-                    if last_position == Some(start) {
-                        let mut next = start;
-                        next.x += unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
-                        last_position = Some(next)
-                    } else {
-                        if let Some(old) = last_position {
-                            if old.x == start.x {
-                                data.queue(crossterm::cursor::MoveToRow(start.y))?;
-                            } else if old.y == start.y {
-                                data.queue(crossterm::cursor::MoveToColumn(start.x))?;
+                        if last_position == Some(start) {
+                            let mut next = start;
+                            next.x += unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
+                            last_position = Some(next)
+                        } else {
+                            if let Some(old) = last_position {
+                                if old.x == start.x {
+                                    data.queue(crossterm::cursor::MoveToRow(start.y))?;
+                                } else if old.y == start.y {
+                                    data.queue(crossterm::cursor::MoveToColumn(start.x))?;
+                                } else {
+                                    data.queue(crossterm::cursor::MoveTo(start.x, start.y))?;
+                                }
                             } else {
                                 data.queue(crossterm::cursor::MoveTo(start.x, start.y))?;
                             }
-                        } else {
-                            data.queue(crossterm::cursor::MoveTo(start.x, start.y))?;
+                            let mut next = start;
+                            next.x += unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
+                            last_position = Some(next);
+                            // continue;
                         }
-                        let mut next = start;
-                        next.x += unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
-                        last_position = Some(next);
-                        // continue;
-                    }
-                    //todo make this better
-                    if last_attr != Some(style.attributes) {
-                        let mut attr = style.attributes;
-                        attr.set(Attribute::Reset);
-                        data.queue(crossterm::style::SetAttributes(attr))?;
-                        last_attr = Some(style.attributes);
-                        data.queue(crossterm::style::SetForegroundColor(style.fg))?;
-                        last_fg = Some(style.fg);
-                        data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
-                        last_bg = Some(style.bg);
-                    }
+                        //todo make this better
+                        if last_attr != Some(style.attributes) {
+                            let mut attr = style.attributes;
+                            attr.set(Attribute::Reset);
+                            data.queue(crossterm::style::SetAttributes(attr))?;
+                            last_attr = Some(style.attributes);
+                            data.queue(crossterm::style::SetForegroundColor(style.fg))?;
+                            last_fg = Some(style.fg);
+                            data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
+                            last_bg = Some(style.bg);
+                        }
 
-                    if last_fg != Some(style.fg) {
-                        data.queue(crossterm::style::SetForegroundColor(style.fg))?;
-                        last_fg = Some(style.fg);
-                    }
-                    if last_bg != Some(style.bg) {
-                        data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
-                        last_bg = Some(style.bg);
-                    }
+                        if last_fg != Some(style.fg) {
+                            data.queue(crossterm::style::SetForegroundColor(style.fg))?;
+                            last_fg = Some(style.fg);
+                        }
+                        if last_bg != Some(style.bg) {
+                            data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
+                            last_bg = Some(style.bg);
+                        }
 
-                    data.queue(crossterm::style::Print(text))?;
+                        data.queue(crossterm::style::Print(text))?;
+                    }
                 }
             }
-        }
 
-        stdout.write_all(&data)?;
-        stdout.flush()?;
+            stdout.write_all(&data)?;
+            stdout.flush()?;
 
-        ctx.clear_event();
-        // loop {
-        let timeout = tick_rate
-            .checked_sub(last_tick.elapsed())
-            .unwrap_or_else(|| Duration::from_secs(0));
-        if crossterm::event::poll(timeout)? {
-            let event = event::read()?;
+            ctx.clear_event();
+            // loop {
+            let timeout = tick_rate
+                .checked_sub(last_tick.elapsed())
+                .unwrap_or_else(|| Duration::from_secs(0));
+            if crossterm::event::poll(timeout)? {
+                let event = event::read()?;
 
-            if let Event::Key(key) = event {
-                if let event::KeyEvent {
-                    code: KeyCode::Esc, ..
-                } = key
-                {
-                    return Ok(());
+                if let Event::Key(key) = event {
+                    if let event::KeyEvent {
+                        code: KeyCode::Esc, ..
+                    } = key
+                    {
+                        return Ok(());
+                    }
                 }
+                ctx.handle_event(event);
+                // break;
             }
-            ctx.handle_event(event);
-            // break;
+            if last_tick.elapsed() >= tick_rate {
+                last_tick = Instant::now();
+            }
+            // }
         }
-        if last_tick.elapsed() >= tick_rate {
-            last_tick = Instant::now();
-        }
-        // }
+    });
+    match res {
+        Ok(Ok(ok)) => AppResult::Ok(ok),
+        Ok(Err(err)) => AppResult::Err(err),
+        Err(panic) => AppResult::Panic(panic),
     }
+}
+
+enum AppResult<O, E, P> {
+    Ok(O),
+    Err(E),
+    Panic(P),
 }

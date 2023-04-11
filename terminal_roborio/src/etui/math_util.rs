@@ -148,14 +148,6 @@ impl Rect {
         }
     }
 
-    pub fn move_top_left_to(&mut self, cursor: VecI2) {
-        let bottom_right = self.bottom_right();
-        self.x = cursor.x;
-        self.y = cursor.y;
-        self.width = bottom_right.x.saturating_sub(cursor.x);
-        self.height = bottom_right.y.saturating_sub(cursor.y);
-    }
-
     pub fn size(&self) -> VecI2 {
         VecI2 {
             x: self.width,
@@ -198,9 +190,35 @@ impl Rect {
         self.width = bottom_left.x.saturating_sub(self.x);
         self.height = bottom_left.y.saturating_sub(self.y);
     }
+
+    pub fn move_top_left_to(&mut self, cursor: VecI2) {
+        let bottom_right = self.bottom_right();
+        self.x = cursor.x;
+        self.y = cursor.y;
+        self.width = bottom_right.x.saturating_sub(cursor.x);
+        self.height = bottom_right.y.saturating_sub(cursor.y);
+    }
+
+    pub fn move_top_right_to(&mut self, top_right: VecI2) {
+        let bottom_left = self.bottom_left();
+        let top_left = VecI2::new(bottom_left.x, top_right.y);
+        let bottom_right = VecI2::new(top_right.x, bottom_left.y);
+        *self = Self::new_pos_pos(top_left, bottom_right)
+    }
+
+    pub fn move_bottom_left_to(&mut self, bottom_left: VecI2) {
+        let top_right = self.top_right();
+        let top_left = VecI2::new(bottom_left.x, top_right.y);
+        let bottom_right = VecI2::new(top_right.x, bottom_left.y);
+        *self = Self::new_pos_pos(top_left, bottom_right)
+    }
+
+    pub fn move_bottom_right_to(&mut self, bottom_right: VecI2) {
+        *self = Self::new_pos_pos(self.top_left(), bottom_right)
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash)]
 pub struct VecI2 {
     pub x: u16,
     pub y: u16,

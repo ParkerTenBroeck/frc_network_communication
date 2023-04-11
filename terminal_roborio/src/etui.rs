@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crossterm::{
-    event::{Event, MouseButton, MouseEvent, MouseEventKind},
+    event::{Event, MouseButton, MouseEventKind},
     style::{Attribute, Attributes, Color},
 };
 
@@ -63,9 +63,7 @@ impl MouseButtonState {
 #[derive(Debug, Default)]
 pub struct MouseState {
     pub position: VecI2,
-    pub left: MouseButtonState,
-    pub middle: MouseButtonState,
-    pub right: MouseButtonState,
+    pub buttons: [MouseButtonState; 3],
     pub scroll: i16,
 }
 
@@ -96,7 +94,7 @@ impl Context {
         let lock = self.inner.read().unwrap();
         let mut ui = Ui {
             clip: lock.max_rect,
-            layout: Layout::TopDown,
+            layout: Layout::TopLeftVertical,
             max_rect: lock.max_rect,
             cursor: {
                 drop(lock);
@@ -112,9 +110,9 @@ impl Context {
         let mut lock = self.inner.write().unwrap();
 
         if let Some(mouse) = &mut lock.mouse {
-            mouse.left.next_state();
-            mouse.middle.next_state();
-            mouse.right.next_state();
+            for button in &mut mouse.buttons {
+                button.next_state();
+            }
         }
 
         lock.memory.clear_seen();
@@ -136,9 +134,9 @@ impl Context {
                     | MouseEventKind::Up(button)
                     | MouseEventKind::Drag(button) => {
                         let button = match button {
-                            MouseButton::Left => &mut mouse.left,
-                            MouseButton::Right => &mut mouse.right,
-                            MouseButton::Middle => &mut mouse.middle,
+                            MouseButton::Left => &mut mouse.buttons[0],
+                            MouseButton::Right => &mut mouse.buttons[2],
+                            MouseButton::Middle => &mut mouse.buttons[1],
                         };
                         match event.kind {
                             MouseEventKind::Down(_) => {
@@ -179,45 +177,120 @@ impl Context {
     pub fn clear_event(&self) {
         self.inner.write().unwrap().event = None
     }
+
+    fn interact(&self, clip: Rect, id: Id, area: Rect) -> Response {
+        let lock = self.inner.read().unwrap();
+        if let Some(mouse) = &lock.mouse {
+            if area.contains(mouse.position) {
+                let mut response = Response::new(area, id, Some(mouse.position));
+                response.buttons = mouse.buttons;
+                response
+            } else {
+                Response::new(area, id, None)
+            }
+        } else {
+            Response::new(area, id, None)
+        }
+    }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct Response{
-    clicked: bool,
-    pressed: bool,
+#[derive(Debug, PartialEq, Eq)]
+pub struct Response {
     hovered: bool,
-    released: bool,
-    dragged: bool,
+    buttons: [MouseButtonState; 3],
+    id: Id,
+    rect: Rect,
+    mouse_pos: Option<VecI2>,
 }
 
-impl Response{
-    pub fn clicked(&self) -> bool{
-        self.clicked
+impl Response {
+    pub fn new(rect: Rect, id: Id, mouse: Option<VecI2>) -> Self {
+        Self {
+            hovered: mouse.map(|m| rect.contains(m)).unwrap_or(false),
+            buttons: Default::default(),
+            id,
+            rect,
+            mouse_pos: mouse,
+        }
     }
-
-    pub fn pressed(&self) -> bool{
-        self.pressed
-    }
-
-    pub fn hovered(&self) -> bool{
+    pub fn hovered(&self) -> bool {
         self.hovered
     }
 
-    pub fn released(&self) -> bool{
-        self.released
+    pub fn released(&self) -> bool {
+        self.buttons[0] == MouseButtonState::Up
     }
 
-    fn nothing() -> Response {
-        Self::default()
+    pub fn clicked(&self) -> bool {
+        self.buttons[0] == MouseButtonState::Down
+    }
+
+    pub fn pressed(&self) -> bool {
+        self.buttons[0].is_down()
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Layout {
-    TopDown,
-    DownTop,
-    LeftRight,
-    RightLeft,
+pub enum Layout {
+    TopLeftVertical,
+    TopLeftHorizontal,
+    TopRightVertical,
+    TopRightHorizontal,
+    BottomLeftVertical,
+    BottomLeftHorizontal,
+    BottomRightVertical,
+    BottomRightHorizontal,
+}
+
+impl Layout {
+    pub fn is_primary_vertical(&self) -> bool {
+        match self {
+            Layout::TopLeftVertical => true,
+            Layout::TopLeftHorizontal => false,
+            Layout::TopRightVertical => true,
+            Layout::TopRightHorizontal => false,
+            Layout::BottomLeftVertical => true,
+            Layout::BottomLeftHorizontal => false,
+            Layout::BottomRightVertical => true,
+            Layout::BottomRightHorizontal => false,
+        }
+    }
+
+    pub fn is_primary_horizontal(&self) -> bool {
+        !self.is_primary_vertical()
+    }
+
+    pub fn to_vertical(&self) -> Self {
+        match self {
+            Layout::TopLeftVertical | Layout::TopLeftHorizontal => Layout::TopLeftVertical,
+            Layout::TopRightVertical | Layout::TopRightHorizontal => Layout::TopRightVertical,
+            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => Layout::BottomLeftVertical,
+            Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
+                Layout::BottomRightVertical
+            }
+        }
+    }
+
+    pub fn to_horizontal(&self) -> Self {
+        match self {
+            Layout::TopLeftVertical | Layout::TopLeftHorizontal => Layout::TopLeftHorizontal,
+            Layout::TopRightVertical | Layout::TopRightHorizontal => Layout::TopRightHorizontal,
+            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => {
+                Layout::BottomLeftHorizontal
+            }
+            Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
+                Layout::BottomRightHorizontal
+            }
+        }
+    }
+
+    pub fn opposite_primary_direction(&self) -> Self {
+        if self.is_primary_vertical() {
+            self.to_horizontal()
+        } else {
+            self.to_vertical()
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -232,7 +305,7 @@ pub struct Ui {
 
 impl Ui {
     pub fn label(&mut self, text: impl Into<StyledText>) {
-        let (_, gallery) = self.create_gallery(text.into());
+        let gallery = self.create_gallery(text.into());
         self.draw_gallery(gallery)
     }
 
@@ -242,6 +315,10 @@ impl Ui {
 
     pub fn get_max(&self) -> Rect {
         self.max_rect
+    }
+
+    pub fn set_max(&mut self, max: Rect) {
+        self.max_rect = max;
     }
 
     pub fn get_cursor(&self) -> VecI2 {
@@ -256,19 +333,18 @@ impl Ui {
         &self.context
     }
 
-    pub fn with_memory_or<T: Clone + 'static, F: FnOnce(T, &mut Self)>(
+    pub fn with_memory_or<T: Clone + 'static, F: FnOnce(T, &mut Self) -> R, R>(
         &mut self,
         id: Id,
         default: T,
         func: F,
-    ) {
+    ) -> Option<R> {
         let mut lock = self.context.inner.write().unwrap();
         let res = lock.memory.get_mut_or(id, default);
         drop(lock);
 
         if let Ok(val) = res {
-            func(val, self);
-            return;
+            return Some(func(val, self));
         }
 
         let mut style = Style {
@@ -282,20 +358,20 @@ impl Ui {
             format!("IDCOLLISION: {:?}", id.value()),
             style,
         ));
+        None
     }
 
-    pub fn with_memory_or_make<T: Clone + 'static, F: FnOnce(T, &mut Self)>(
+    pub fn with_memory_or_make<T: Clone + 'static, F: FnOnce(T, &mut Self) -> R, R>(
         &mut self,
         id: Id,
         default: impl FnOnce() -> T,
         func: F,
-    ) {
+    ) -> Option<R> {
         let mut lock = self.context.inner.write().unwrap();
         let res = lock.memory.get_mut_or(id, default());
         drop(lock);
         if let Ok(val) = res {
-            func(val, self);
-            return;
+            return Some(func(val, self));
         }
 
         let mut style = Style::default();
@@ -307,6 +383,7 @@ impl Ui {
             format!("IDCOLLISION: {:?}", id.value()),
             style,
         ));
+        None
     }
 
     fn child(&self) -> Ui {
@@ -326,6 +403,47 @@ impl Ui {
         func(&mut child)
     }
 
+    pub fn tabbed_area<F: FnOnce(usize, &mut Self) -> R, R, const L: usize>(
+        &mut self,
+        id: Id,
+        titles: [impl Into<StyledText>; L],
+        func: F,
+    ) -> Option<R> {
+        self.with_memory_or(id, 0usize, |mut val, ui| {
+            // let start = ui.cursor;
+            ui.add_space_primary_direction(1);
+            ui.layout(ui.layout.opposite_primary_direction(), |ui| {
+                ui.add_space_primary_direction(1);
+                for (i, title) in titles.into_iter().enumerate() {
+                    let mut title: StyledText = title.into();
+                    if i == val {
+                        title.bg(Color::DarkGrey)
+                    }
+                    if ui.button(title).clicked() {
+                        val = i;
+                        ui.context.inner.write().unwrap().memory.insert(id, i);
+                    }
+                    ui.add_space_primary_direction(1);
+                }
+            });
+            ui.add_space_primary_direction(1);
+
+            let mut bruh = BoxedArea::default();
+            bruh.add_line(ui.current.top_left(), ui.current.top_right_inner());
+            bruh.add_line(ui.current.top_right_inner(), ui.current.bottom_right_inner());
+            bruh.add_line(ui.current.bottom_right_inner(), ui.current.bottom_left_inner());
+            bruh.add_line(ui.current.bottom_left_inner(), ui.current.top_left());
+            bruh.draw(ui.ctx(), Style::default(), &crate::etui::symbols::line::NORMAL);
+
+
+            let res = func(val, ui);
+
+            // draw other shit
+
+            res
+        })
+    }
+
     pub fn bordered(&mut self, func: impl FnOnce(&mut Ui)) {
         let start_clip = self.clip;
         let start_max_rect = self.max_rect;
@@ -339,14 +457,14 @@ impl Ui {
         child.max_rect.shrink_evenly(1);
         child.clip = start_clip;
         child.clip.shrink_evenly(1);
+        child.current = Rect::new_pos_size(child.cursor, VecI2::new(0, 0));
 
         func(&mut child);
 
-        let mut lock = self.context.inner.write().unwrap();
-
-        child.expand(VecI2::new(1, 1));
         let mut border = child.current;
         border.expand_to_include(&Rect::new_pos_size(start, VecI2::new(0, 0)));
+
+        let mut lock = self.context.inner.write().unwrap();
 
         lock.draws.push(Draw::Text(
             StyledText {
@@ -355,14 +473,14 @@ impl Ui {
             },
             border.top_left(),
         ));
-        for i in 0..(border.width - 2) {
+        for i in 1..(border.width) {
             lock.draws.push(Draw::Text(
                 StyledText {
                     text: HORIZONTAL.into(),
                     style: Style::default(),
                 },
                 VecI2 {
-                    x: border.x + 1 + i,
+                    x: border.x + i,
                     y: border.y,
                 },
             ));
@@ -373,7 +491,7 @@ impl Ui {
                 text: TOP_RIGHT.into(),
                 style: Style::default(),
             },
-            border.top_right_inner(),
+            border.top_right(),
         ));
 
         lock.draws.push(Draw::Text(
@@ -381,17 +499,17 @@ impl Ui {
                 text: BOTTOM_LEFT.into(),
                 style: Style::default(),
             },
-            border.bottom_left_inner(),
+            border.bottom_left(),
         ));
-        for i in 0..(border.width - 2) {
+        for i in 1..(border.width) {
             lock.draws.push(Draw::Text(
                 StyledText {
                     text: HORIZONTAL.into(),
                     style: Style::default(),
                 },
                 VecI2 {
-                    x: border.x + 1 + i,
-                    y: border.bottom_right_inner().y,
+                    x: border.x + i,
+                    y: border.bottom_right().y,
                 },
             ));
         }
@@ -401,10 +519,10 @@ impl Ui {
                 text: BOTTOM_RIGHT.into(),
                 style: Style::default(),
             },
-            border.bottom_right_inner(),
+            border.bottom_right(),
         ));
 
-        for i in 0..(border.height - 2) {
+        for i in 1..(border.height) {
             lock.draws.push(Draw::Text(
                 StyledText {
                     text: VERTICAL.into(),
@@ -412,7 +530,7 @@ impl Ui {
                 },
                 VecI2 {
                     x: border.x,
-                    y: border.y + 1 + i,
+                    y: border.y + i,
                 },
             ));
             lock.draws.push(Draw::Text(
@@ -421,8 +539,8 @@ impl Ui {
                     style: Style::default(),
                 },
                 VecI2 {
-                    x: border.bottom_right_inner().x,
-                    y: border.y + 1 + i,
+                    x: border.bottom_right().x,
+                    y: border.y + i,
                 },
             ));
         }
@@ -432,153 +550,125 @@ impl Ui {
     }
 
     fn allocate_area(&mut self, rect: Rect) -> Rect {
-        if rect.top_left() == self.cursor {
+        let start = match self.layout {
+            Layout::TopLeftVertical | Layout::TopLeftHorizontal => rect.top_left(),
+            Layout::TopRightVertical | Layout::TopRightHorizontal => rect.top_right_inner(),
+            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => rect.bottom_left_inner(),
+            Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
+                rect.bottom_right_inner()
+            }
+        };
+        if start == self.cursor {
             self.allocate_size(rect.size())
-        } else {
-            todo!()
-        }
-    }
-
-    fn allocate_size(&mut self, desired: VecI2) -> Rect {
-        let old_cursor = self.cursor;
-        let old_max = self.max_rect;
-        self.add_space(desired);
-        let new_cursor = self.cursor;
-
-        match self.layout {
-            Layout::TopDown => {
-                self.cursor.x = old_cursor.x;
-                self.max_rect.x = old_max.x;
-                self.max_rect.width = old_max.width;
-                Rect::new_pos_pos(old_cursor, new_cursor)
-            }
-            Layout::LeftRight => {
-                self.cursor.y = old_cursor.y;
-                self.max_rect.y = old_max.y;
-                self.max_rect.height = old_max.height;
-                Rect::new_pos_pos(old_cursor, new_cursor)
-            }
-            Layout::DownTop => {
-                self.cursor.x = old_cursor.x;
-                self.max_rect.x = old_max.x;
-                self.max_rect.width = old_max.width;
-                Rect::new_pos_pos(
-                    VecI2::new(old_cursor.x, new_cursor.y),
-                    VecI2::new(new_cursor.x, old_cursor.y),
-                )
-            }
-            Layout::RightLeft => {
-                self.cursor.y = old_cursor.y;
-                self.max_rect.y = old_max.y;
-                self.max_rect.height = old_max.height;
-                Rect::new_pos_pos(
-                    VecI2::new(new_cursor.x, old_cursor.y),
-                    VecI2::new(old_cursor.x, new_cursor.y),
-                )
+        } else{
+            let mut cpy = rect;
+            cpy.shrink_evenly(1);
+            if cpy.contains(self.cursor){
+                panic!("Cannot allocate before cursor")
+            }else{
+                cpy.expand_to_include(&Rect::new_pos_size(self.cursor, VecI2::new(0,0)));
+                self.allocate_size(cpy.size())
             }
         }
     }
 
     pub fn vertical<R, F: FnOnce(&mut Ui) -> R>(&mut self, func: F) -> R {
-        self.layout(Layout::TopDown, func)
+        self.layout(self.layout.to_vertical(), func)
     }
     pub fn horizontal<R, F: FnOnce(&mut Ui) -> R>(&mut self, func: F) -> R {
-        self.layout(Layout::LeftRight, func)
+        self.layout(self.layout.to_horizontal(), func)
     }
 
-    fn layout<R, F: FnOnce(&mut Ui) -> R>(&mut self, layout: Layout, func: F) -> R {
+    pub fn layout<R, F: FnOnce(&mut Ui) -> R>(&mut self, layout: Layout, func: F) -> R {
         let mut ui = self.clone();
+
+        match layout {
+            Layout::TopLeftHorizontal | Layout::TopLeftVertical => {
+                ui.cursor = ui.max_rect.top_left();
+            }
+            Layout::TopRightHorizontal | Layout::TopRightVertical => {
+                ui.cursor = ui.max_rect.top_right_inner();
+            }
+            Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
+                ui.cursor = ui.max_rect.bottom_left_inner();
+            }
+            Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
+                ui.cursor = ui.max_rect.bottom_right_inner();
+            }
+        }
         ui.current = Rect::new_pos_size(ui.cursor, VecI2::new(0, 0));
         ui.layout = layout;
         let res = func(&mut ui);
+        
         self.allocate_area(ui.current);
+        
         res
     }
 
     pub fn seperator(&mut self) {
-        match self.layout {
-            Layout::LeftRight | Layout::RightLeft => {
-                let area = self.allocate_size(VecI2::new(1, self.current.height));
+        if self.layout.is_primary_horizontal() {
+            let area = self.allocate_size(VecI2::new(1, self.current.height));
 
-                let mut lock = self.context.inner.write().unwrap();
-                for i in 0..area.height {
-                    lock.draws.push(Draw::Text(
-                        StyledText {
-                            text: VERTICAL.into(),
-                            style: Style::default(),
-                        },
-                        VecI2 {
-                            x: area.x,
-                            y: self.current.y + i,
-                        },
-                    ));
-                }
+            let mut lock = self.context.inner.write().unwrap();
+            for i in 0..area.height {
+                lock.draws.push(Draw::Text(
+                    StyledText {
+                        text: VERTICAL.into(),
+                        style: Style::default(),
+                    },
+                    VecI2 {
+                        x: area.x,
+                        y: self.current.y + i,
+                    },
+                ));
             }
-            Layout::TopDown | Layout::DownTop => {
-                let area = self.allocate_size(VecI2::new(self.current.width, 1));
-                let mut lock = self.context.inner.write().unwrap();
-                for i in 0..area.width {
-                    lock.draws.push(Draw::Text(
-                        StyledText {
-                            text: HORIZONTAL.into(),
-                            style: Style::default(),
-                        },
-                        VecI2 {
-                            x: self.current.x + i,
-                            y: area.y,
-                        },
-                    ));
-                }
+        } else {
+            let area = self.allocate_size(VecI2::new(self.current.width, 1));
+            let mut lock = self.context.inner.write().unwrap();
+            for i in 0..area.width {
+                lock.draws.push(Draw::Text(
+                    StyledText {
+                        text: HORIZONTAL.into(),
+                        style: Style::default(),
+                    },
+                    VecI2 {
+                        x: self.current.x + i,
+                        y: area.y,
+                    },
+                ));
             }
         }
     }
 
-    fn draw_gallery(&mut self, gallery: Vec<(Rect, StyledText)>) {
+    fn draw_gallery(&mut self, gallery: Gallery) {
+        self.allocate_area(gallery.bound);
         let mut lock = self.context.inner.write().unwrap();
-        lock.draws.reserve(gallery.len());
-        drop(lock);
-        for (bound, text) in gallery {
-            self.allocate_area(bound);
-            let mut lock = self.context.inner.write().unwrap();
+        lock.draws.reserve(gallery.items.len());
+        for (bound, text) in gallery.items {
             lock.draws.push(Draw::Text(text, bound.top_left()));
         }
     }
 
-    pub fn interact(&mut self, area: Rect) -> Response{
-        if let Some(mouse) = &self.context.inner.read().unwrap().mouse{
-            if area.contains(mouse.position){
-                Response{
-                    clicked: mouse.left == MouseButtonState::Down,
-                    pressed: mouse.left.is_down(),
-                    hovered: true,
-                    released: mouse.left == MouseButtonState::Up,
-                    dragged: mouse.left == MouseButtonState::Drag,
-                }
-            }else{
-                Response::nothing()
-            }
-        }else{
-            Response::nothing()
-        }
+    pub fn interact(&mut self, id: Id, area: Rect) -> Response {
+        self.context.interact(self.clip, id, area)
     }
 
     pub fn button(&mut self, text: impl Into<StyledText>) -> Response {
-        let (area, mut gallery) = self.create_gallery(text.into());
-        
-        let response = self.interact(area);
+        let mut gallery = self.create_gallery(text.into());
+        let response = self.interact(Id::new("As"), gallery.bound);
 
-        if response.pressed(){
-            for item in &mut gallery {
+        if response.pressed() {
+            for item in &mut gallery.items {
                 item.1.bg(Color::Blue);
             }
         }
 
-        if response.hovered(){
-            for item in &mut gallery {
+        if response.hovered() {
+            for item in &mut gallery.items {
                 item.1.underline(true);
             }
         }
-        
+
         self.draw_gallery(gallery);
         response
     }
@@ -624,7 +714,7 @@ impl Ui {
         });
     }
 
-    fn create_gallery(&self, text: StyledText) -> (Rect, Vec<(Rect, StyledText)>) {
+    fn create_gallery(&self, text: StyledText) -> Gallery {
         let mut rect = Rect::new_pos_size(self.cursor, VecI2::new(0, 0));
 
         let mut gallery = Vec::new();
@@ -646,11 +736,58 @@ impl Ui {
                     style: text.style,
                 },
             ));
+            // rect.in
             rect.height += 1;
             rect.width = rect.width.max(line_width);
         }
 
-        (rect, gallery)
+        match self.layout {
+            Layout::TopLeftVertical | Layout::TopLeftHorizontal => {}
+            Layout::TopRightVertical | Layout::TopRightHorizontal => {
+                rect.x = rect.x.saturating_sub(rect.width) + 1;
+                for (bound, item) in &mut gallery {
+                    bound.x = bound.x.saturating_sub(rect.width) + 1;
+                }
+            }
+            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => {
+                rect.y = rect.y.saturating_sub(rect.height) + 1;
+                for (bound, item) in &mut gallery {
+                    bound.y = bound.y.saturating_sub(rect.height) + 1;
+                }
+            }
+            Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
+                rect.y = rect.y.saturating_sub(rect.height) + 1;
+                rect.x = rect.x.saturating_sub(rect.width) + 1;
+                for (bound, item) in &mut gallery {
+                    bound.x = bound.x.saturating_sub(rect.width) + 1;
+                    bound.y = bound.y.saturating_sub(rect.height) + 1;
+                }
+            }
+        }
+
+        Gallery {
+            bound: rect,
+            items: gallery,
+        }
+    }
+
+    fn allocate_size(&mut self, desired: VecI2) -> Rect {
+        let old_cursor = self.cursor;
+        let old_max = self.max_rect;
+        self.add_space(desired);
+        let new_cursor = self.cursor;
+
+        if self.layout.is_primary_vertical() {
+            self.cursor.x = old_cursor.x;
+            self.max_rect.x = old_max.x;
+            self.max_rect.width = old_max.width;
+            Rect::new_pos_pos(old_cursor, new_cursor)
+        } else {
+            self.cursor.y = old_cursor.y;
+            self.max_rect.y = old_max.y;
+            self.max_rect.height = old_max.height;
+            Rect::new_pos_pos(old_cursor, new_cursor)
+        }
     }
 
     pub fn add_horizontal_space(&mut self, space: u16) {
@@ -663,20 +800,31 @@ impl Ui {
 
     pub fn add_space(&mut self, space: VecI2) {
         match self.layout {
-            Layout::LeftRight | Layout::TopDown => {
+            Layout::TopLeftHorizontal | Layout::TopLeftVertical => {
                 self.cursor += space;
+
                 self.clip.move_top_left_to(self.cursor);
                 self.max_rect.move_top_left_to(self.cursor);
             }
-            Layout::DownTop => {
-                self.cursor -= VecI2::new(0, space.y);
-                self.cursor += VecI2::new(space.x, 0);
-                todo!()
-            }
-            Layout::RightLeft => {
+            Layout::TopRightHorizontal | Layout::TopRightVertical => {
                 self.cursor += VecI2::new(0, space.y);
                 self.cursor -= VecI2::new(space.x, 0);
-                todo!()
+
+                self.clip.move_top_right_to(self.cursor);
+                self.max_rect.move_top_right_to(self.cursor);
+            }
+            Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
+                self.cursor -= VecI2::new(0, space.y);
+                self.cursor += VecI2::new(space.x, 0);
+
+                self.clip.move_bottom_left_to(self.cursor);
+                self.max_rect.move_bottom_left_to(self.cursor);
+            }
+            Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
+                self.cursor -= VecI2::new(space.x, space.y);
+
+                self.clip.move_bottom_right_to(self.cursor);
+                self.max_rect.move_bottom_right_to(self.cursor);
             }
         }
         self.current
@@ -685,14 +833,19 @@ impl Ui {
 
     pub fn expand(&mut self, translation: VecI2) {
         match self.layout {
-            Layout::LeftRight | Layout::TopDown => self.current.add_bottom_right(translation),
-            Layout::DownTop => {
+            Layout::TopLeftHorizontal | Layout::TopLeftVertical => {
+                self.current.add_bottom_right(translation)
+            }
+            Layout::TopRightHorizontal | Layout::TopRightVertical => {
                 self.current.add_bottom_right(VecI2::new(translation.x, 0));
                 self.current.add_top_left(VecI2::new(0, translation.y))
             }
-            Layout::RightLeft => {
+            Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
                 self.current.add_bottom_right(VecI2::new(0, translation.y));
                 self.current.add_top_left(VecI2::new(translation.x, 0))
+            }
+            Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
+                self.current.add_top_left(translation)
             }
         }
     }
@@ -701,18 +854,36 @@ impl Ui {
         min.x = min.x.min(self.max_rect.width);
         min.y = min.y.min(self.max_rect.height);
         match self.layout {
-            Layout::LeftRight | Layout::TopDown => {
+            Layout::TopLeftHorizontal | Layout::TopLeftVertical => {
                 self.current.width = self.current.width.max(min.x);
                 self.current.height = self.current.height.max(min.y);
             }
-            Layout::DownTop => {
-                todo!()
+            Layout::TopRightHorizontal | Layout::TopRightVertical => {
+                todo!();
             }
-            Layout::RightLeft => {
-                todo!()
+            Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
+                todo!();
+            }
+            Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
+                todo!();
             }
         }
     }
+
+    fn add_space_primary_direction(&mut self, space: u16) {
+        if self.layout.is_primary_horizontal() {
+            self.add_space(VecI2::new(space, 0));
+        } else {
+            self.add_space(VecI2::new(0, space));
+        }
+    }
+
+
+}
+
+struct Gallery {
+    bound: Rect,
+    items: Vec<(Rect, StyledText)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -846,6 +1017,90 @@ impl From<String> for StyledText {
         Self {
             text,
             ..Default::default()
+        }
+    }
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+struct NodeAttachements {
+    up: bool,
+    left: bool,
+    right: bool,
+    down: bool,
+}
+
+#[derive(Debug, Default, Clone)]
+struct BoxedArea {
+    vertices: std::collections::HashMap<VecI2, NodeAttachements>,
+    lines: Vec<(VecI2, VecI2, bool)>,
+}
+
+impl BoxedArea {
+    pub fn add_line(&mut self, p1: VecI2, p2: VecI2) {
+        assert!(p1 != p2);
+        if p1.x == p2.x {
+            let p1_node = self.vertices.entry(p1).or_insert_with(Default::default);
+            if p1.y > p2.y {
+                p1_node.down = true;
+            } else {
+                p1_node.up = true;
+            }
+
+            let p2_node = self.vertices.entry(p2).or_insert_with(Default::default);
+            if p1.y > p2.y {
+                p2_node.up = true;
+            } else {
+                p2_node.down = true;
+            }
+            self.lines.push((p1, p2, false))
+        } else if p1.y == p2.y {
+            let p1_node = self.vertices.entry(p1).or_insert_with(Default::default);
+            if p1.x > p2.x {
+                p1_node.right = true;
+            } else {
+                p1_node.left = true;
+            }
+
+            let p2_node = self.vertices.entry(p2).or_insert_with(Default::default);
+            if p1.x > p2.x {
+                p2_node.left = true;
+            } else {
+                p2_node.right = true;
+            }
+            self.lines.push((p1, p2, true))
+        } else {
+            panic!("Not stright line");
+        }
+    }
+
+    pub fn draw(&self, ctx: &Context, style: Style, set: &crate::etui::symbols::line::Set) {
+        let mut lock = ctx.inner.write().unwrap();
+
+        for (pos, node) in &self.vertices {
+            let val = match (node.up, node.right, node.down, node.left) {
+                (true, false, true, false) => set.vertical,
+                (true, true, true, false) => set.vertical_right,
+                (true, false, true, true) => set.vertical_left,
+
+                (false, true, false, true) => set.horizontal,
+                (true, true, false, true) => set.horizontal_down,
+                (false, true, true, true) => set.horizontal_up,
+
+                (true, true, false, false) => set.top_right,
+                (false, true, true, false) => set.bottom_right,
+                (false, false, true, true) => set.bottom_left,
+                (true, false, false, true) => set.top_left,
+
+                (true, true, true, true) => set.cross,
+                _ => "*",
+            };
+            lock.draws.push(Draw::Text(
+                StyledText {
+                    text: val.to_owned(),
+                    style,
+                },
+                *pos,
+            ))
         }
     }
 }

@@ -61,6 +61,9 @@ pub(super) struct RoborioUdp {
     hooks: RwLock<Hooks>,
 }
 
+impl UnwindSafe for RoborioUdp {}
+impl RefUnwindSafe for RoborioUdp {}
+
 type HookDyn = dyn Fn() + Send + Sync + UnwindSafe + RefUnwindSafe + 'static;
 type Hook = Option<Box<HookDyn>>;
 

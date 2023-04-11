@@ -2,6 +2,7 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     ops::Deref,
+    panic::{RefUnwindSafe, UnwindSafe},
     sync::atomic::{AtomicBool, AtomicU16, AtomicU8, AtomicUsize},
 };
 
@@ -32,6 +33,9 @@ pub(super) struct RoborioTcp {
     match_info: spin::Mutex<Option<MatchInfo>>,
     controller_info: spin::Mutex<[Option<ControllerInfo>; 6]>,
 }
+
+impl UnwindSafe for RoborioTcp {}
+impl RefUnwindSafe for RoborioTcp {}
 
 impl Default for RoborioTcp {
     fn default() -> Self {

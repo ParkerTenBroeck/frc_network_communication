@@ -50,6 +50,9 @@ struct RoborioCommon {
     driverstation_ip: Mutex<Option<IpAddr>>,
 }
 
+impl UnwindSafe for RoborioCommon {}
+impl RefUnwindSafe for RoborioCommon {}
+
 impl std::fmt::Debug for RoborioCommon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RoborioCommon")
