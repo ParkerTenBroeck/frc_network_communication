@@ -306,7 +306,8 @@ pub struct Ui {
 impl Ui {
     pub fn label(&mut self, text: impl Into<StyledText>) {
         let gallery = self.create_gallery(text.into());
-        self.draw_gallery(gallery)
+        self.allocate_area(gallery.bound);
+        self.draw_gallery(gallery);
     }
 
     pub fn get_clip(&self) -> Rect {
@@ -411,37 +412,142 @@ impl Ui {
     ) -> Option<R> {
         self.with_memory_or(id, 0usize, |mut val, ui| {
             // let start = ui.cursor;
-            ui.add_space_primary_direction(1);
-            ui.layout(ui.layout.opposite_primary_direction(), |ui| {
+            ui.layout(ui.layout, |ui| {
                 ui.add_space_primary_direction(1);
-                for (i, title) in titles.into_iter().enumerate() {
-                    let mut title: StyledText = title.into();
-                    if i == val {
-                        title.bg(Color::DarkGrey)
-                    }
-                    if ui.button(title).clicked() {
-                        val = i;
-                        ui.context.inner.write().unwrap().memory.insert(id, i);
-                    }
+                ui.layout(ui.layout.opposite_primary_direction(), |ui| {
                     ui.add_space_primary_direction(1);
-                }
-            });
-            ui.add_space_primary_direction(1);
+                    for (i, title) in titles.into_iter().enumerate() {
+                        let mut title: StyledText = title.into();
+                        if i == val {
+                            title.bg(Color::DarkGrey)
+                        }
+                        if ui.button(title).clicked() {
+                            val = i;
+                            ui.context.inner.write().unwrap().memory.insert(id, i);
+                        }
+                        ui.add_space_primary_direction(1);
+                    }
+                });
+                ui.add_space_primary_direction(1);
 
-            let mut bruh = BoxedArea::default();
-            bruh.add_line(ui.current.top_left(), ui.current.top_right_inner());
-            bruh.add_line(ui.current.top_right_inner(), ui.current.bottom_right_inner());
-            bruh.add_line(ui.current.bottom_right_inner(), ui.current.bottom_left_inner());
-            bruh.add_line(ui.current.bottom_left_inner(), ui.current.top_left());
-            bruh.draw(ui.ctx(), Style::default(), &crate::etui::symbols::line::NORMAL);
+                let tab_box = ui.current;
 
+                let res = func(val, ui);
 
-            let res = func(val, ui);
+                let mut bruh = BoxedArea::default();
+                bruh.add_line(tab_box.top_left(), tab_box.top_right_inner());
+                bruh.add_line(tab_box.top_right_inner(), tab_box.bottom_right_inner());
+                bruh.add_line(tab_box.bottom_right_inner(), tab_box.bottom_left_inner());
+                bruh.add_line(tab_box.bottom_left_inner(), tab_box.top_left());
+                bruh.draw(
+                    ui.ctx(),
+                    Style::default(),
+                    &crate::etui::symbols::line::NORMAL,
+                );
 
-            // draw other shit
-
-            res
+                res
+            })
         })
+    }
+
+    pub fn progress_bar(
+        &mut self,
+        mut style: Style,
+        min_size: u16,
+        max_size: u16,
+        width: u16,
+        layout: Layout,
+        progress: f32,
+    ) -> Response {
+        let mut string = String::new();
+
+        let cursor = self.cursor;
+
+        let (len, area) = if self.layout.is_primary_horizontal() {
+            let size = self.current.width.clamp(min_size, max_size);
+            let rect = self.allocate_size(VecI2::new(size, 1));
+            (rect.width, rect)
+        } else {
+            let size = self.current.height.clamp(min_size, max_size);
+            let rect = self.allocate_size(VecI2::new(1, size));
+            (rect.height, rect)
+        };
+
+        let complete = (len as f32 * progress.clamp(0.0, 1.0) * 8.0) as u32;
+        let whole = complete / 8;
+        let remaining = ((len as u32 * 8) - complete) / 8;
+
+        for _ in 0..whole {
+            for _ in 0..width{
+                string.push('█');
+            }
+            if layout.is_primary_vertical() {
+                string.push('\n');
+            }
+        }
+        match layout{
+            Layout::TopLeftVertical => style.attributes.set(Attribute::Reverse),
+            Layout::TopLeftHorizontal => style.attributes.set(Attribute::NoReverse),
+            Layout::TopRightVertical => style.attributes.set(Attribute::Reverse),
+            Layout::TopRightHorizontal => style.attributes.set(Attribute::Reverse),
+            Layout::BottomLeftVertical => style.attributes.set(Attribute::NoReverse),
+            Layout::BottomLeftHorizontal => style.attributes.set(Attribute::NoReverse),
+            Layout::BottomRightVertical => style.attributes.set(Attribute::NoReverse),
+            Layout::BottomRightHorizontal => style.attributes.set(Attribute::Reverse),
+        }
+        
+        if whole + remaining != len as u32 {
+            let t = if layout.is_primary_horizontal(){
+                match complete % 8 {
+                    0 => ' ',
+                    1 => '▏',
+                    2 => '▎',
+                    3 => '▍',
+                    4 => '▌',
+                    5 => '▋',
+                    6 => '▊',
+                    7 => '▉',
+                    // not gonna happen
+                    _ => ' ',
+                }
+            }else{
+                match complete % 8 {
+                    0 => ' ',
+                    1 => '▁',
+                    2 => '▂',
+                    3 => '▃',
+                    4 => '▄',
+                    5 => '▅',
+                    6 => '▆',
+                    7 => '▇',
+                    // not gonna happen
+                    _ => ' ',
+                }
+            };
+            for _ in 0..width{
+                string.push(t);
+            }
+            if layout.is_primary_vertical() {
+                string.push('\n');
+            }
+        }
+        for _ in 0..remaining {
+            for _ in 0..width{
+                string.push(' ');
+            }
+            if layout.is_primary_vertical() {
+                string.push('\n');
+            }
+        }
+        if self.layout.is_primary_vertical(){
+            string = string.chars().rev().collect();
+        }
+        string = string.trim_matches('\n').to_owned();
+        let gallery = self.create_gallery_at(cursor, StyledText::styled(string, style));
+        // assert_eq!(gallery.bound, area, "{:#?}", gallery.items);
+        self.draw_gallery(gallery);
+
+        self.interact(Id::new("Bruh"), area)
     }
 
     pub fn bordered(&mut self, func: impl FnOnce(&mut Ui)) {
@@ -461,8 +567,11 @@ impl Ui {
 
         func(&mut child);
 
-        let mut border = child.current;
-        border.expand_to_include(&Rect::new_pos_size(start, VecI2::new(0, 0)));
+        // let mut border = child.current;
+        child
+            .current
+            .expand_to_include(&Rect::new_pos_size(start, VecI2::new(0, 0)));
+        let border = child.current;
 
         let mut lock = self.context.inner.write().unwrap();
 
@@ -545,28 +654,26 @@ impl Ui {
             ));
         }
         drop(lock);
-
-        self.allocate_size(border.size());
+        child.add_space(VecI2::new(1, 1));
+        self.allocate_size(child.current.size());
     }
 
     fn allocate_area(&mut self, rect: Rect) -> Rect {
         let start = match self.layout {
             Layout::TopLeftVertical | Layout::TopLeftHorizontal => rect.top_left(),
-            Layout::TopRightVertical | Layout::TopRightHorizontal => rect.top_right_inner(),
-            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => rect.bottom_left_inner(),
-            Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
-                rect.bottom_right_inner()
-            }
+            Layout::TopRightVertical | Layout::TopRightHorizontal => rect.top_right(),
+            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => rect.bottom_left(),
+            Layout::BottomRightVertical | Layout::BottomRightHorizontal => rect.bottom_right(),
         };
         if start == self.cursor {
             self.allocate_size(rect.size())
-        } else{
+        } else {
             let mut cpy = rect;
             cpy.shrink_evenly(1);
-            if cpy.contains(self.cursor){
+            if cpy.contains(self.cursor) {
                 panic!("Cannot allocate before cursor")
-            }else{
-                cpy.expand_to_include(&Rect::new_pos_size(self.cursor, VecI2::new(0,0)));
+            } else {
+                cpy.expand_to_include(&Rect::new_pos_size(self.cursor, VecI2::new(0, 0)));
                 self.allocate_size(cpy.size())
             }
         }
@@ -599,9 +706,9 @@ impl Ui {
         ui.current = Rect::new_pos_size(ui.cursor, VecI2::new(0, 0));
         ui.layout = layout;
         let res = func(&mut ui);
-        
+
         self.allocate_area(ui.current);
-        
+
         res
     }
 
@@ -641,7 +748,6 @@ impl Ui {
     }
 
     fn draw_gallery(&mut self, gallery: Gallery) {
-        self.allocate_area(gallery.bound);
         let mut lock = self.context.inner.write().unwrap();
         lock.draws.reserve(gallery.items.len());
         for (bound, text) in gallery.items {
@@ -655,6 +761,8 @@ impl Ui {
 
     pub fn button(&mut self, text: impl Into<StyledText>) -> Response {
         let mut gallery = self.create_gallery(text.into());
+        let area = self.allocate_area(gallery.bound);
+        gallery.bound = area;
         let response = self.interact(Id::new("As"), gallery.bound);
 
         if response.pressed() {
@@ -715,7 +823,11 @@ impl Ui {
     }
 
     fn create_gallery(&self, text: StyledText) -> Gallery {
-        let mut rect = Rect::new_pos_size(self.cursor, VecI2::new(0, 0));
+        self.create_gallery_at(self.cursor, text)
+    }
+
+    fn create_gallery_at(&self, pos: VecI2, text: StyledText) -> Gallery {
+        let mut rect = Rect::new_pos_size(pos, VecI2::new(0, 0));
 
         let mut gallery = Vec::new();
 
@@ -810,21 +922,26 @@ impl Ui {
                 self.cursor += VecI2::new(0, space.y);
                 self.cursor -= VecI2::new(space.x, 0);
 
-                self.clip.move_top_right_to(self.cursor);
-                self.max_rect.move_top_right_to(self.cursor);
+                self.clip.move_top_right_to(self.cursor + VecI2::new(1, 0));
+                self.max_rect
+                    .move_top_right_to(self.cursor + VecI2::new(1, 0));
             }
             Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
                 self.cursor -= VecI2::new(0, space.y);
                 self.cursor += VecI2::new(space.x, 0);
 
-                self.clip.move_bottom_left_to(self.cursor);
-                self.max_rect.move_bottom_left_to(self.cursor);
+                self.clip
+                    .move_bottom_left_to(self.cursor + VecI2::new(0, 1));
+                self.max_rect
+                    .move_bottom_left_to(self.cursor + VecI2::new(0, 1));
             }
             Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
                 self.cursor -= VecI2::new(space.x, space.y);
 
-                self.clip.move_bottom_right_to(self.cursor);
-                self.max_rect.move_bottom_right_to(self.cursor);
+                self.clip
+                    .move_bottom_right_to(self.cursor + VecI2::new(1, 1));
+                self.max_rect
+                    .move_bottom_right_to(self.cursor + VecI2::new(1, 1));
             }
         }
         self.current
@@ -870,15 +987,13 @@ impl Ui {
         }
     }
 
-    fn add_space_primary_direction(&mut self, space: u16) {
+    pub fn add_space_primary_direction(&mut self, space: u16) {
         if self.layout.is_primary_horizontal() {
             self.add_space(VecI2::new(space, 0));
         } else {
             self.add_space(VecI2::new(0, space));
         }
     }
-
-
 }
 
 struct Gallery {

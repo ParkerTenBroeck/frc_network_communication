@@ -82,6 +82,12 @@ impl Joysticks {
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NonNegU16(u16);
 
+impl Default for NonNegU16 {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
 impl Debug for NonNegU16 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("NonNegU16").field(&self.get()).finish()
@@ -324,9 +330,9 @@ impl<'a> WriteToBuff<'a> for Joystick {
             buf.write_u8((self.buttons >> (i * 8)) as u8)?;
         }
 
-        buf.write_u8(self.povs.len() as u8)?;
-        for i in 0..self.povs.len() {
-            buf.write_u16(self.povs[i].raw())?;
+        buf.write_u8(self.povs_len())?;
+        for i in 0..self.povs_len() {
+            buf.write_u16(self.povs[i as usize].raw())?;
         }
 
         Ok(())

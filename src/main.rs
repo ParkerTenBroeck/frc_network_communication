@@ -45,16 +45,16 @@ impl Pov {
     }
 
     pub fn set_up(&mut self, pressed: bool) {
-        self.val = self.val & 1 | pressed as u8;
+        self.val = self.val & !1 | pressed as u8;
     }
     pub fn set_right(&mut self, pressed: bool) {
-        self.val = self.val & 0b10 | ((pressed as u8) << 1);
+        self.val = self.val & !0b10 | ((pressed as u8) << 1);
     }
     pub fn set_down(&mut self, pressed: bool) {
-        self.val = self.val & 0b100 | ((pressed as u8) << 2);
+        self.val = self.val & !0b100 | ((pressed as u8) << 2);
     }
     pub fn set_left(&mut self, pressed: bool) {
-        self.val = self.val & 0b1000 | ((pressed as u8) << 3);
+        self.val = self.val & !0b1000 | ((pressed as u8) << 3);
     }
 }
 
@@ -167,6 +167,8 @@ pub fn controller(driverstation: Arc<RobotComm>) {
                     }
                     default.push_pov(NonNegU16::none()).unwrap();
 
+                    // println!("{:#?}", default);
+
                     *controller = Some(default);
                 } else if event.event == gilrs::EventType::Disconnected
                     || event.event == gilrs::EventType::Dropped
@@ -209,6 +211,7 @@ pub fn controller(driverstation: Arc<RobotComm>) {
                                 gilrs::Button::DPadUp => {
                                     let index: usize = event.id.into();
                                     povs[index].set_up(val);
+
                                     controller.set_pov(0, povs[index].to_val()).unwrap();
                                     return;
                                 }
@@ -274,8 +277,8 @@ pub mod roborio;
 
 fn main() {
     // bruh::run_bruh()
-    simulate_roborio()
-    // run_driverstation()
+    // simulate_roborio()
+    run_driverstation()
 }
 
 pub fn run_driverstation() {
@@ -284,8 +287,8 @@ pub fn run_driverstation() {
 
     // let ipaddr =
     // robot_comm::util::robot_discovery::find_robot_ip(1114).expect("Failed to find roborio");
-    // let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-    let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
+    let ipaddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    // let ipaddr = IpAddr::V4(Ipv4Addr::new(10, 11, 14, 2));
     // println!("FOUND ROBORIO: {:?}", ipaddr);
 
     let driverstation = RobotComm::new(Some(ipaddr));

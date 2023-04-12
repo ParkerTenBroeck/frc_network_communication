@@ -1,7 +1,7 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    style::Attribute,
+    style::{Attribute, Color},
     terminal::{
         disable_raw_mode, enable_raw_mode, DisableLineWrap, EnterAlternateScreen,
         LeaveAlternateScreen,
@@ -111,6 +111,25 @@ fn main() -> Result<(), io::Error> {
         }
     }
 
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let mut stdout = io::stdout();
+
+        // restore terminal
+        disable_raw_mode().unwrap();
+        execute!(stdout, LeaveAlternateScreen, DisableMouseCapture).unwrap();
+        execute!(stdout, crossterm::cursor::Show).unwrap();
+
+        hook(info);
+
+        // setup terminal
+        enable_raw_mode().unwrap();
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
+        execute!(stdout, DisableLineWrap).unwrap();
+        execute!(stdout, crossterm::cursor::Hide).unwrap();
+    }));
+
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -213,7 +232,6 @@ fn run_app(
                             data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
                             last_bg = Some(style.bg);
                         }
-
                         data.queue(crossterm::style::Print(text))?;
                     }
                 }

@@ -55,11 +55,11 @@ impl App {
     pub fn ui(&mut self, ctx: &etui::Context) {
         self.driverstation.observe_robot_code(true);
         Context::frame(ctx, |ui| {
-            test_layout_text(ui);
+            // test_layout_text(ui);
 
-            if true {
-                return;
-            }
+            // if true {
+            //     return;
+            // }
 
             ui.bordered(|ui| {
                 let mut msg = StyledText::new("Press esc to exit");
@@ -138,12 +138,12 @@ impl App {
                         if ui.button("こんにちは世界!").pressed() {
                             ui.label("UNICODEEEEE")
                         }
-                        ui.label(format!("{:#?}", ui.ctx().get_event()));
+                        // ui.label(format!("{:#?}", ui.ctx().get_event()));
 
-                        ui.label(format!("{:?}", ui.get_clip()));
-                        ui.label(format!("{:?}", ui.get_cursor()));
-                        ui.label(format!("{:?}", ui.get_max()));
-                        ui.label(format!("{:?}", ui.get_current()));
+                        // ui.label(format!("{:?}", ui.get_clip()));
+                        // ui.label(format!("{:?}", ui.get_cursor()));
+                        // ui.label(format!("{:?}", ui.get_max()));
+                        // ui.label(format!("{:?}", ui.get_current()));
                     });
                     ui.with_size(ui.get_max().size(), |ui| {
                         ui.seperator();
@@ -184,8 +184,116 @@ impl App {
 
                                 ui.tabbed_area(
                                     etui::id::Id::new("TABBS"),
-                                    ["Bruh1", "Bruh2", "Bruh3"],
-                                    |tab, ui| ui.label(format!("tab: {}", tab)),
+                                    ["Joy1", "Joy2", "Joy3", "Joy4", "Joy5", "Joy6"],
+                                    |tab, ui| {
+                                        ui.bordered(|ui| {
+                                            if let Some(joy) = self.driverstation.get_joystick(tab)
+                                            {
+                                                ui.label("Buttons");
+                                                ui.horizontal(|ui| {
+                                                    for b in 0..joy.buttons_len() {
+                                                        let style = Style {
+                                                            fg: Color::Black,
+                                                            bg: if joy
+                                                                .get_button(b)
+                                                                .unwrap_or(false)
+                                                            {
+                                                                Color::Green
+                                                            } else {
+                                                                Color::DarkGrey
+                                                            },
+                                                            ..Default::default()
+                                                        };
+                                                        ui.label(StyledText::styled(
+                                                            "▎ ".to_owned(),
+                                                            style,
+                                                        ));
+                                                    }
+                                                });
+                                                ui.label("Povs");
+
+                                                ui.horizontal(|ui| {
+                                                    for p in 0..joy.povs_len() {
+                                                        let mut string = String::new();
+                                                        let pov =
+                                                            joy.get_pov(p).unwrap_or_default();
+                                                        for y in 0..3 {
+                                                            for x in 0..3 {
+                                                                let (px, py) = match pov.get() {
+                                                                    None => (1, 1),
+                                                                    Some(val) => match val {
+                                                                        0 => (1, 0),
+                                                                        45 => (2, 0),
+                                                                        90 => (2, 1),
+                                                                        135 => (2, 2),
+                                                                        180 => (1, 2),
+                                                                        225 => (0, 2),
+                                                                        270 => (0, 1),
+                                                                        315 => (0, 0),
+                                                                        _ => (99, 99),
+                                                                    },
+                                                                };
+                                                                if x == px && y == py {
+                                                                    string.push('█');
+                                                                    string.push('█');
+                                                                } else {
+                                                                    string.push(' ');
+                                                                    string.push(' ');
+                                                                }
+                                                            }
+                                                            string.push('\n')
+                                                        }
+                                                        let style = Style {
+                                                            fg: Color::Green,
+                                                            bg: Color::DarkGrey,
+                                                            ..Default::default()
+                                                        };
+                                                        ui.label(StyledText::styled(string, style));
+
+                                                        ui.add_space_primary_direction(1);
+                                                    }
+                                                });
+
+                                                ui.label("Axis");
+                                                ui.horizontal(|ui| {
+                                                    ui.vertical(|ui|{
+
+                                                        for a in 0..joy.axis_len() {
+                                                            ui.horizontal(|ui| {
+                                                                ui.label(format!(" {}:", a));
+                                                                let val = joy.get_axis(a).unwrap_or(0)
+                                                                    as u32
+                                                                    + 128;
+                                                                let val = val as f32 / 255.0;
+                                                                let style = Style {
+                                                                    fg: Color::Green,
+                                                                    bg: Color::DarkGrey,
+                                                                    ..Default::default()
+                                                                };
+                                                                ui.progress_bar(style, 8, 8, 1, etui::Layout::TopLeftHorizontal,val)
+                                                                // ui.label(format!("{}", val))
+                                                            });
+                                                        }
+                                                    });
+                                                    ui.add_space_primary_direction(1);
+                                                    ui.vertical(|ui| {
+                                                        let val = joy.get_axis(0).unwrap_or(0)
+                                                            as u32
+                                                            + 128;
+                                                        let val = val as f32 / 255.0;
+                                                        let style = Style {
+                                                            fg: Color::Green,
+                                                            bg: Color::DarkGrey,
+                                                            ..Default::default()
+                                                        };
+                                                        ui.progress_bar(style, 6, 6, 2, etui::Layout::TopLeftVertical,val)
+                                                    });
+                                                });
+                                            } else {
+                                                ui.label("None")
+                                            }
+                                        });
+                                    },
                                 );
                             });
                         });
@@ -206,9 +314,8 @@ fn test_layout_text(ui: &mut etui::Ui) {
             ui.bordered(|ui| {
                 ui.with_size(ui.get_max().size(), |ui| {
                     if tab == 1 {
-                        
                         let max = ui.get_max();
-                        
+
                         ui.layout(TopLeftHorizontal, |ui| {
                             ui.bordered(|ui| {
                                 ui.label("TopLeft\nHorizontal");
@@ -241,7 +348,6 @@ fn test_layout_text(ui: &mut etui::Ui) {
                             });
                         });
                     } else {
-
                         let max = ui.get_max();
 
                         ui.layout(TopLeftVertical, |ui| {
@@ -249,6 +355,7 @@ fn test_layout_text(ui: &mut etui::Ui) {
                                 ui.label("TopLeft\nVertical");
                                 ui.label("TopLeftVertical");
                             });
+                            drop_down(ui, "4")
                         });
 
                         ui.layout(BottomLeftVertical, |ui| {
@@ -256,6 +363,7 @@ fn test_layout_text(ui: &mut etui::Ui) {
                                 ui.label("BottomLeft\nVertical");
                                 ui.label("BottomLeftVertical");
                             });
+                            drop_down(ui, "3")
                         });
 
                         ui.set_max(max);
@@ -265,6 +373,7 @@ fn test_layout_text(ui: &mut etui::Ui) {
                                 ui.label("TopRight\nVertical");
                                 ui.label("TopRightVertical");
                             });
+                            drop_down(ui, "2")
                         });
 
                         ui.set_max(max);
@@ -274,12 +383,22 @@ fn test_layout_text(ui: &mut etui::Ui) {
                                 ui.label("BottomRight\nVertical");
                                 ui.label("BottomRightVertical");
                             });
+                            drop_down(ui, "1")
                         });
                     }
                 });
             });
         },
     );
+}
+
+fn drop_down(ui: &mut etui::Ui, title: &str) {
+    ui.drop_down(title, |ui| {
+        ui.label("Bruh");
+        if ui.button("bruh").pressed() {
+            ui.label("asdasd")
+        }
+    });
 }
 
 fn test_layout_tabs(ui: &mut etui::Ui) {

@@ -34,20 +34,22 @@ impl Rect {
     }
 
     pub fn expand_to_include(&mut self, other: &Self) {
-        let sx2 = self.x.saturating_add(self.width);
-        let sy2 = self.y.saturating_add(self.height);
+        let s_top_left = self.top_left();
+        let o_top_left = other.top_left();
 
-        let ox2 = other.x.saturating_add(other.width);
-        let oy2 = other.y.saturating_add(other.height);
+        let s_bottom_right = self.bottom_right();
+        let o_bottom_right = other.bottom_right();
 
-        self.x = self.x.min(other.x);
-        self.y = self.y.min(other.y);
+        let top_left = VecI2::new(
+            s_top_left.x.min(o_top_left.x),
+            s_top_left.y.min(o_top_left.y),
+        );
+        let bottom_right = VecI2::new(
+            s_bottom_right.x.max(o_bottom_right.x),
+            s_bottom_right.y.max(o_bottom_right.y),
+        );
 
-        let sx2 = sx2.max(ox2);
-        let sy2 = sy2.max(oy2);
-
-        self.width = sx2 - self.x;
-        self.height = sy2 - self.y;
+        *self = Rect::new_pos_pos(top_left, bottom_right)
     }
 
     pub fn overlap(&self, other: &Self) -> bool {
@@ -214,7 +216,15 @@ impl Rect {
     }
 
     pub fn move_bottom_right_to(&mut self, bottom_right: VecI2) {
-        *self = Self::new_pos_pos(self.top_left(), bottom_right)
+        *self = Self::new_pos_pos(self.top_left(), bottom_right);
+        if self.x > bottom_right.x {
+            self.x = bottom_right.x;
+            self.width = 0;
+        }
+        if self.y > bottom_right.y {
+            self.y = bottom_right.y;
+            self.height = 0;
+        }
     }
 }
 
