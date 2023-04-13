@@ -396,8 +396,10 @@ fn test_layout_text(ui: &mut etui::Ui) {
 
                         ui.layout(BottomRightVertical, |ui| {
                             ui.bordered(|ui| {
+                                drop_down(ui, "12");
                                 ui.label("BottomRight\nVertical");
                                 ui.label("BottomRightVertical");
+                                drop_down(ui, "123");
                             });
                             drop_down(ui, "1");
                             ui.label("asdasd")
