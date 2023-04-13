@@ -56,13 +56,12 @@ impl App {
         self.driverstation.observe_robot_code(true);
         Context::frame(ctx, |ui| {
             test_layout_text(ui);
-             if true {
+            if true {
                 return;
             }
 
             ui.label(format!("{:?}", ui.get_max().size()));
             ui.label(format!("Draw call len: {}B", len));
-           
 
             ui.bordered(|ui| {
                 let mut msg = StyledText::new("Press esc to exit");
@@ -400,7 +399,8 @@ fn test_layout_text(ui: &mut etui::Ui) {
                                 ui.label("BottomRight\nVertical");
                                 ui.label("BottomRightVertical");
                             });
-                            drop_down(ui, "1")
+                            drop_down(ui, "1");
+                            ui.label("asdasd")
                         });
                     }
                 });

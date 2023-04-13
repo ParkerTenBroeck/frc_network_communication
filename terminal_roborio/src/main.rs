@@ -170,10 +170,9 @@ fn run_app(
         let mut last_tick = Instant::now();
 
         let (x, y) = crossterm::terminal::size()?;
-        let mut last_observed_size = VecI2::new(x,y);
+        let mut last_observed_size = VecI2::new(x, y);
 
         let mut ctx = Context::new(last_observed_size);
-
 
         let mut data: Vec<u8> = Vec::new();
         let mut last_len = 0;
@@ -224,23 +223,23 @@ fn run_app(
                             update_now = true;
                             // same position different text/style
                             curr
-                        } else if curr.2.y == prev.2.y{
-                            if curr.2.x > prev.2.x{
+                        } else if curr.2.y == prev.2.y {
+                            if curr.2.x > prev.2.x {
                                 update_prev = true;
                                 (" ", Style::default(), prev.2)
-                            }else if curr.2.x < prev.2.x{
+                            } else if curr.2.x < prev.2.x {
                                 update_now = true;
                                 curr
-                            }else{
+                            } else {
                                 panic!()
                             }
-                        } else if curr.2.y < prev.2.y{
+                        } else if curr.2.y < prev.2.y {
                             update_now = true;
                             curr
-                        }else if curr.2.y > prev.2.y{
+                        } else if curr.2.y > prev.2.y {
                             update_prev = true;
                             (" ", Style::default(), prev.2)
-                        }else{
+                        } else {
                             panic!()
                         }
                     }
@@ -325,26 +324,26 @@ fn run_app(
                     }
                 }
 
-                match event{
-                    Event::Key(KeyEvent{ code: KeyCode::Char('c') ,..}) => {
+                match event {
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char('c'),
+                        ..
+                    }) => {
                         data.queue(crossterm::terminal::Clear(
                             crossterm::terminal::ClearType::All,
                         ))?;
-                    },
+                    }
                     _ => {}
                 }
 
                 // these can easily be batched
                 if let Event::Resize(x, y) = event {
-                    last_observed_size = VecI2::new(x,y);
-                }else{
+                    last_observed_size = VecI2::new(x, y);
+                } else {
                     ctx.handle_event(event);
                 }
-
-
             }
             last_tick = Instant::now();
-
         }
     });
     match res {

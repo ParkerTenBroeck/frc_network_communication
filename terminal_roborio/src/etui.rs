@@ -85,7 +85,7 @@ pub struct ContextInner {
 impl ContextInner {
     fn new(size: VecI2) -> ContextInner {
         let mut myself = Self {
-            max_rect: Rect::new_pos_size(VecI2::new(0,0), size),
+            max_rect: Rect::new_pos_size(VecI2::new(0, 0), size),
             ..Default::default()
         };
         myself.current.resize(size);
@@ -94,13 +94,7 @@ impl ContextInner {
     }
 
     pub fn draw(&mut self, str: &str, style: Style, start: VecI2, layer: NonZeroU8, clip: Rect) {
-        self.current.push_text(
-            str,
-            style,
-            start,
-            layer,
-            clip,
-        )
+        self.current.push_text(str, style, start, layer, clip)
     }
 
     pub fn finish_frame(&mut self) -> (ScreenIter<'_>, ScreenDrain<'_>) {
@@ -225,12 +219,12 @@ impl Context {
 
     pub fn set_size(&self, last_observed_size: VecI2) -> bool {
         let mut lock = self.inner.write().unwrap();
-        if lock.max_rect.size() != last_observed_size{
-            lock.max_rect = Rect::new_pos_size(VecI2::new(0,0), last_observed_size);
+        if lock.max_rect.size() != last_observed_size {
+            lock.max_rect = Rect::new_pos_size(VecI2::new(0, 0), last_observed_size);
             lock.current.resize(last_observed_size);
             lock.last.resize(last_observed_size);
             true
-        }else{
+        } else {
             false
         }
     }
@@ -594,6 +588,10 @@ impl Ui {
     }
 
     pub fn bordered(&mut self, func: impl FnOnce(&mut Ui)) {
+        // if true{
+        //     func(self);
+        //     return
+        // }
         let start_clip = self.clip;
         let start_max_rect = self.max_rect;
         let start = self.cursor;
@@ -606,104 +604,108 @@ impl Ui {
         child.max_rect.shrink_evenly(1);
         child.clip = start_clip;
         child.clip.shrink_evenly(1);
-        child.current = Rect::new_pos_size(child.cursor, VecI2::new(0, 0));
+        child.current = Rect::new_pos_size(child.cursor, VecI2::new(0,0));
 
         func(&mut child);
 
-        child
-            .current
-            .expand_to_include(&Rect::new_pos_size(start, VecI2::new(0, 0)));
         child.expand(VecI2::new(1, 1));
+
+        // child.current.expand_evenly(1);
+        child.current.expand_to_include(&Rect::new_pos_size(start, VecI2::new(0,0)));
+        
         let border = child.current;
 
         let mut lock = self.context.inner.write().unwrap();
 
         
+        if true {
+            lock.draw(
+                TOP_LEFT,
+                Style::default(),
+                border.top_left(),
+                self.layer,
+                border,
+            );
+            lock.draw(
+                TOP_RIGHT,
+                Style::default(),
+                border.top_right_inner(),
+                self.layer,
+                border,
+            );
+            lock.draw(
+                BOTTOM_RIGHT,
+                Style::default(),
+                border.bottom_right_inner(),
+                self.layer,
+                border,
+            );
+            lock.draw(
+                BOTTOM_LEFT,
+                Style::default(),
+                border.bottom_left_inner(),
+                self.layer,
+                border,
+            );
 
-        lock.draw(
-            TOP_LEFT,
-            Style::default(),
-            border.top_left(),
-            self.layer,
-            border,
-        );
-        lock.draw(
-            TOP_RIGHT,
-            Style::default(),
-            border.top_right_inner(),
-            self.layer,
-            border,
-        );
-        lock.draw(
-            BOTTOM_RIGHT,
-            Style::default(),
-            border.bottom_right_inner(),
-            self.layer,
-            border,
-        );
-        lock.draw(
-            BOTTOM_LEFT,
-            Style::default(),
-            border.bottom_left_inner(),
-            self.layer,
-            border,
-        );
+            // for i in 1..(border.width - 1) {
+            //     lock.draw(
+            //         HORIZONTAL,
+            //         Style::default(),
+            //         VecI2 {
+            //             x: border.x + i,
+            //             y: border.y,
+            //         },
+            //         self.layer,
+            //         border,
+            //     );
+            //     lock.draw(
+            //         HORIZONTAL,
+            //         Style::default(),
+            //         VecI2 {
+            //             x: border.x + i,
+            //             y: border.bottom_right_inner().y,
+            //         },
+            //         self.layer,
+            //         border,
+            //     );
+            // }
 
-        for i in 1..(border.width - 1) {
-            lock.draw(
-                HORIZONTAL,
-                Style::default(),
-                VecI2 {
-                    x: border.x + i,
-                    y: border.y,
-                },
-                self.layer,
-                border,
-            );
-            lock.draw(
-                HORIZONTAL,
-                Style::default(),
-                VecI2 {
-                    x: border.x + i,
-                    y: border.bottom_right_inner().y,
-                },
-                self.layer,
-                border,
-            );
-        }
-
-        for i in 1..(border.height - 1) {
-            lock.draw(
-                VERTICAL,
-                Style::default(),
-                VecI2 {
-                    x: border.x,
-                    y: border.y + i,
-                },
-                self.layer,
-                border,
-            );
-            lock.draw(
-                VERTICAL,
-                Style::default(),
-                VecI2 {
-                    x: border.bottom_right_inner().x,
-                    y: border.y + i,
-                },
-                self.layer,
-                border,
-            );
+            // for i in 1..(border.height - 1) {
+            //     lock.draw(
+            //         VERTICAL,
+            //         Style::default(),
+            //         VecI2 {
+            //             x: border.x,
+            //             y: border.y + i,
+            //         },
+            //         self.layer,
+            //         border,
+            //     );
+            //     lock.draw(
+            //         VERTICAL,
+            //         Style::default(),
+            //         VecI2 {
+            //             x: border.bottom_right_inner().x,
+            //             y: border.y + i,
+            //         },
+            //         self.layer,
+            //         border,
+            //     );
+            // }
         }
         drop(lock);
-        self.allocate_size(child.current.size());
+        self.allocate_area(child.current);
     }
 
     fn allocate_area(&mut self, rect: Rect) -> Rect {
         let start = match self.layout {
             Layout::TopLeftVertical | Layout::TopLeftHorizontal => rect.top_left(),
-            Layout::TopRightVertical | Layout::TopRightHorizontal => rect.top_right(),
-            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => rect.bottom_left(),
-            Layout::BottomRightVertical | Layout::BottomRightHorizontal => rect.bottom_right(),
+            Layout::TopRightVertical | Layout::TopRightHorizontal => rect.top_right_inner(),
+            Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => rect.bottom_left_inner(),
+            Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
+                rect.bottom_right_inner()
+            }
         };
         if start == self.cursor {
             self.allocate_size(rect.size())
@@ -734,13 +736,13 @@ impl Ui {
                 ui.cursor = ui.max_rect.top_left();
             }
             Layout::TopRightHorizontal | Layout::TopRightVertical => {
-                ui.cursor = ui.max_rect.top_right_inner();
+                ui.cursor = ui.max_rect.top_right();
             }
             Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
-                ui.cursor = ui.max_rect.bottom_left_inner();
+                ui.cursor = ui.max_rect.bottom_left();
             }
             Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
-                ui.cursor = ui.max_rect.bottom_right_inner();
+                ui.cursor = ui.max_rect.bottom_right();
             }
         }
         ui.current = Rect::new_pos_size(ui.cursor, VecI2::new(0, 0));
@@ -789,15 +791,9 @@ impl Ui {
 
     fn draw_gallery(&mut self, gallery: Gallery) {
         let mut lock = self.context.inner.write().unwrap();
-        
+
         for (bound, text) in gallery.items {
-            lock.draw(
-                &text.text,
-                text.style,
-                bound.top_left(),
-                self.layer,
-                bound,
-            );
+            lock.draw(&text.text, text.style, bound.top_left(), self.layer, bound);
         }
     }
 
@@ -808,6 +804,7 @@ impl Ui {
     pub fn button(&mut self, text: impl Into<StyledText>) -> Response {
         let mut gallery = self.create_gallery(text.into());
         let area = self.allocate_area(gallery.bound);
+        // assert_eq!(area, gallery.bound);
         gallery.bound = area;
         let response = self.interact(Id::new("As"), gallery.bound);
 
@@ -914,21 +911,21 @@ impl Ui {
             Layout::TopRightVertical | Layout::TopRightHorizontal => {
                 rect.x = rect.x.saturating_sub(rect.width) + 1;
                 for (bound, _item) in &mut gallery {
-                    bound.x = bound.x.saturating_sub(rect.width) + 1;
+                    bound.x = bound.x.saturating_sub(rect.width);
                 }
             }
             Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => {
                 rect.y = rect.y.saturating_sub(rect.height) + 1;
                 for (bound, _item) in &mut gallery {
-                    bound.y = bound.y.saturating_sub(rect.height) + 1;
+                    bound.y = bound.y.saturating_sub(rect.height);
                 }
             }
             Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
                 rect.y = rect.y.saturating_sub(rect.height) + 1;
                 rect.x = rect.x.saturating_sub(rect.width) + 1;
                 for (bound, _item) in &mut gallery {
-                    bound.x = bound.x.saturating_sub(rect.width) + 1;
-                    bound.y = bound.y.saturating_sub(rect.height) + 1;
+                    bound.x = bound.x.saturating_sub(rect.width);
+                    bound.y = bound.y.saturating_sub(rect.height);
                 }
             }
         }
@@ -949,13 +946,16 @@ impl Ui {
             self.cursor.x = old_cursor.x;
             self.max_rect.x = old_max.x;
             self.max_rect.width = old_max.width;
-            Rect::new_pos_pos(old_cursor, new_cursor)
         } else {
             self.cursor.y = old_cursor.y;
             self.max_rect.y = old_max.y;
             self.max_rect.height = old_max.height;
-            Rect::new_pos_pos(old_cursor, new_cursor)
         }
+        let x = old_cursor.x.min(new_cursor.x);
+        let y = old_cursor.y.min(new_cursor.y);
+        let width = old_cursor.x.abs_diff(new_cursor.x);
+        let height = old_cursor.y.abs_diff(new_cursor.y);
+        Rect::new_pos_size(VecI2::new(x, y), VecI2::new(width, height))
     }
 
     pub fn add_horizontal_space(&mut self, space: u16) {
@@ -978,30 +978,26 @@ impl Ui {
                 self.cursor += VecI2::new(0, space.y);
                 self.cursor -= VecI2::new(space.x, 0);
 
-                self.clip.move_top_right_to(self.cursor + VecI2::new(1, 0));
-                self.max_rect
-                    .move_top_right_to(self.cursor + VecI2::new(1, 0));
+                self.clip.move_top_right_to(self.cursor);
+                self.max_rect.move_top_right_to(self.cursor);
             }
             Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
                 self.cursor -= VecI2::new(0, space.y);
                 self.cursor += VecI2::new(space.x, 0);
 
-                self.clip
-                    .move_bottom_left_to(self.cursor + VecI2::new(0, 1));
-                self.max_rect
-                    .move_bottom_left_to(self.cursor + VecI2::new(0, 1));
+                self.clip.move_bottom_left_to(self.cursor);
+                self.max_rect.move_bottom_left_to(self.cursor);
             }
             Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
                 self.cursor -= VecI2::new(space.x, space.y);
 
-                self.clip
-                    .move_bottom_right_to(self.cursor + VecI2::new(1, 1));
-                self.max_rect
-                    .move_bottom_right_to(self.cursor + VecI2::new(1, 1));
+                self.clip.move_bottom_right_to(self.cursor);
+                self.max_rect.move_bottom_right_to(self.cursor);
             }
         }
         self.current
-            .expand_to_include(&Rect::new_pos_size(self.cursor, VecI2::new(0, 0)));
+        .expand_to_include(&Rect::new_pos_size(self.cursor, VecI2::new(0, 0)));
+       
     }
 
     pub fn expand(&mut self, translation: VecI2) {
@@ -1010,12 +1006,12 @@ impl Ui {
                 self.current.add_bottom_right(translation)
             }
             Layout::TopRightHorizontal | Layout::TopRightVertical => {
-                self.current.add_bottom_right(VecI2::new(translation.x, 0));
-                self.current.add_top_left(VecI2::new(0, translation.y))
-            }
-            Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
                 self.current.add_bottom_right(VecI2::new(0, translation.y));
                 self.current.add_top_left(VecI2::new(translation.x, 0))
+            }
+            Layout::BottomLeftHorizontal | Layout::BottomLeftVertical => {
+                self.current.add_bottom_right(VecI2::new(translation.x, 0));
+                self.current.add_top_left(VecI2::new(0, translation.y))
             }
             Layout::BottomRightHorizontal | Layout::BottomRightVertical => {
                 self.current.add_top_left(translation)
@@ -1208,7 +1204,10 @@ struct BoxedArea {
 
 impl BoxedArea {
     pub fn add_line(&mut self, p1: VecI2, p2: VecI2) {
-        assert!(p1 != p2);
+        // assert!(p1 != p2);
+        if p1 == p2 {
+            return
+        }
         if p1.x == p2.x {
             let p1_node = self.vertices.entry(p1).or_insert_with(Default::default);
             if p1.y > p2.y {

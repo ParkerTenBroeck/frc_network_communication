@@ -8,11 +8,11 @@ pub struct Rect {
 
 impl Rect {
     pub fn add_top_left(&mut self, translation: VecI2) {
-        self.x = self.x.saturating_add(translation.x);
-        self.y = self.y.saturating_add(translation.y);
+        self.x = self.x.saturating_sub(translation.x);
+        self.y = self.y.saturating_sub(translation.y);
 
-        self.width = self.width.saturating_sub(translation.x);
-        self.height = self.height.saturating_sub(translation.y);
+        self.width = self.width.saturating_add(translation.x);
+        self.height = self.height.saturating_add(translation.y);
     }
 
     pub fn sub_top_left(&mut self, translation: VecI2) {
