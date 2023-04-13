@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
     execute,
     style::{Attribute, Color},
     terminal::{
@@ -143,7 +143,7 @@ fn main() -> Result<(), io::Error> {
     execute!(stdout, crossterm::cursor::Hide)?;
 
     let app = App::new(driverstation, log);
-    let res = run_app(stdout, app, std::time::Duration::from_millis(30));
+    let res = run_app(stdout, app, std::time::Duration::from_millis(17));
 
     let mut stdout = io::stdout();
     // restore terminal
@@ -180,10 +180,9 @@ fn run_app(
 
         loop {
             let changed = ctx.set_size(last_observed_size);
-            data.clear();
             app.ui(&ctx, last_len);
 
-            if changed{
+            if changed {
                 data.queue(crossterm::terminal::Clear(
                     crossterm::terminal::ClearType::All,
                 ))?;
@@ -308,6 +307,7 @@ fn run_app(
             last_len = data.len();
             stdout.write_all(&data)?;
             stdout.flush()?;
+            data.clear();
 
             ctx.clear_event();
             let timeout = tick_rate
@@ -324,6 +324,16 @@ fn run_app(
                         return Ok(());
                     }
                 }
+
+                match event{
+                    Event::Key(KeyEvent{ code: KeyCode::Char('c') ,..}) => {
+                        data.queue(crossterm::terminal::Clear(
+                            crossterm::terminal::ClearType::All,
+                        ))?;
+                    },
+                    _ => {}
+                }
+
                 // these can easily be batched
                 if let Event::Resize(x, y) = event {
                     last_observed_size = VecI2::new(x,y);
@@ -331,8 +341,10 @@ fn run_app(
                     ctx.handle_event(event);
                 }
 
+
             }
             last_tick = Instant::now();
+
         }
     });
     match res {

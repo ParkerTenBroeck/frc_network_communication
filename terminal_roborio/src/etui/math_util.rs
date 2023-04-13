@@ -193,12 +193,9 @@ impl Rect {
         self.height = bottom_left.y.saturating_sub(self.y);
     }
 
-    pub fn move_top_left_to(&mut self, cursor: VecI2) {
+    pub fn move_top_left_to(&mut self, top_left: VecI2) {
         let bottom_right = self.bottom_right();
-        self.x = cursor.x;
-        self.y = cursor.y;
-        self.width = bottom_right.x.saturating_sub(cursor.x);
-        self.height = bottom_right.y.saturating_sub(cursor.y);
+        *self = Rect::new_pos_pos(top_left, bottom_right)
     }
 
     pub fn move_top_right_to(&mut self, top_right: VecI2) {

@@ -55,13 +55,14 @@ impl App {
     pub fn ui(&mut self, ctx: &etui::Context, len: usize) {
         self.driverstation.observe_robot_code(true);
         Context::frame(ctx, |ui| {
-            // test_layout_text(ui);
+            test_layout_text(ui);
+             if true {
+                return;
+            }
 
             ui.label(format!("{:?}", ui.get_max().size()));
             ui.label(format!("Draw call len: {}B", len));
-            // if true {
-            //     return;
-            // }
+           
 
             ui.bordered(|ui| {
                 let mut msg = StyledText::new("Press esc to exit");

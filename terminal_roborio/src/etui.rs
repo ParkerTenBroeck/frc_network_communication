@@ -99,7 +99,7 @@ impl ContextInner {
             style,
             start,
             layer,
-            Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(u16::MAX, u16::MAX)),
+            clip,
         )
     }
 
@@ -610,33 +610,46 @@ impl Ui {
 
         func(&mut child);
 
-        // let mut border = child.current;
         child
             .current
             .expand_to_include(&Rect::new_pos_size(start, VecI2::new(0, 0)));
+        child.expand(VecI2::new(1, 1));
         let border = child.current;
 
         let mut lock = self.context.inner.write().unwrap();
 
-        // lock.draws.push(Draw::Text(
-        //     StyledText {
-        //         text: TOP_LEFT.into(),
-        //         style: Style::default(),
-        //     },
-        //     border.top_left(),
-        // ));
-        for i in 1..(border.width) {
-            // lock.draws.push(Draw::Text(
-            //     StyledText {
-            //         text: HORIZONTAL.into(),
-            //         style: Style::default(),
-            //     },
-            //     VecI2 {
-            //         x: border.x + i,
-            //         y: border.y,
-            //     },
-            // ));
+        
 
+        lock.draw(
+            TOP_LEFT,
+            Style::default(),
+            border.top_left(),
+            self.layer,
+            border,
+        );
+        lock.draw(
+            TOP_RIGHT,
+            Style::default(),
+            border.top_right_inner(),
+            self.layer,
+            border,
+        );
+        lock.draw(
+            BOTTOM_RIGHT,
+            Style::default(),
+            border.bottom_right_inner(),
+            self.layer,
+            border,
+        );
+        lock.draw(
+            BOTTOM_LEFT,
+            Style::default(),
+            border.bottom_left_inner(),
+            self.layer,
+            border,
+        );
+
+        for i in 1..(border.width - 1) {
             lock.draw(
                 HORIZONTAL,
                 Style::default(),
@@ -645,86 +658,21 @@ impl Ui {
                     y: border.y,
                 },
                 self.layer,
-                self.clip,
+                border,
             );
-        }
-
-        lock.draw(
-            TOP_LEFT,
-            Style::default(),
-            border.top_left(),
-            self.layer,
-            self.clip,
-        );
-        lock.draw(
-            TOP_RIGHT,
-            Style::default(),
-            border.top_right(),
-            self.layer,
-            self.clip,
-        );
-        lock.draw(
-            BOTTOM_RIGHT,
-            Style::default(),
-            border.bottom_right(),
-            self.layer,
-            self.clip,
-        );
-        lock.draw(
-            BOTTOM_LEFT,
-            Style::default(),
-            border.bottom_left(),
-            self.layer,
-            self.clip,
-        );
-        // lock.draws.push(Draw::Text(
-        //     StyledText {
-        //         text: TOP_RIGHT.into(),
-        //         style: Style::default(),
-        //     },
-        //     border.top_right(),
-        // ));
-
-        // lock.draws.push(Draw::Text(
-        //     StyledText {
-        //         text: BOTTOM_LEFT.into(),
-        //         style: Style::default(),
-        //     },
-        //     border.bottom_left(),
-        // ));
-        for i in 1..(border.width) {
-            // lock.draws.push(Draw::Text(
-            //     StyledText {
-            //         text: HORIZONTAL.into(),
-            //         style: Style::default(),
-            //     },
-            //     VecI2 {
-            //         x: border.x + i,
-            //         y: border.bottom_right().y,
-            //     },
-            // ));
-
             lock.draw(
                 HORIZONTAL,
                 Style::default(),
                 VecI2 {
                     x: border.x + i,
-                    y: border.bottom_right().y,
+                    y: border.bottom_right_inner().y,
                 },
                 self.layer,
-                self.clip,
+                border,
             );
         }
 
-        // lock.draws.push(Draw::Text(
-        //     StyledText {
-        //         text: BOTTOM_RIGHT.into(),
-        //         style: Style::default(),
-        //     },
-        //     border.bottom_right(),
-        // ));
-
-        for i in 1..(border.height) {
+        for i in 1..(border.height - 1) {
             lock.draw(
                 VERTICAL,
                 Style::default(),
@@ -733,41 +681,20 @@ impl Ui {
                     y: border.y + i,
                 },
                 self.layer,
-                self.clip,
+                border,
             );
             lock.draw(
                 VERTICAL,
                 Style::default(),
                 VecI2 {
-                    x: border.bottom_right().x,
+                    x: border.bottom_right_inner().x,
                     y: border.y + i,
                 },
                 self.layer,
-                self.clip,
+                border,
             );
-            // lock.draws.push(Draw::Text(
-            //     StyledText {
-            //         text: VERTICAL.into(),
-            //         style: Style::default(),
-            //     },
-            //     VecI2 {
-            //         x: border.x,
-            //         y: border.y + i,
-            //     },
-            // ));
-            // lock.draws.push(Draw::Text(
-            //     StyledText {
-            //         text: VERTICAL.into(),
-            //         style: Style::default(),
-            //     },
-            //     VecI2 {
-            //         x: border.bottom_right().x,
-            //         y: border.y + i,
-            //     },
-            // ));
         }
         drop(lock);
-        child.add_space(VecI2::new(1, 1));
         self.allocate_size(child.current.size());
     }
 
@@ -839,18 +766,8 @@ impl Ui {
                         y: self.current.y + i,
                     },
                     self.layer,
-                    self.clip,
+                    area,
                 );
-                // lock.draws.push(Draw::Text(
-                //     StyledText {
-                //         text: VERTICAL.into(),
-                //         style: Style::default(),
-                //     },
-                //     VecI2 {
-                //         x: area.x,
-                //         y: self.current.y + i,
-                //     },
-                // ));
             }
         } else {
             let area = self.allocate_size(VecI2::new(self.current.width, 1));
@@ -864,33 +781,22 @@ impl Ui {
                         y: area.y,
                     },
                     self.layer,
-                    self.clip,
+                    area,
                 );
-                // lock.draws.push(Draw::Text(
-                //     StyledText {
-                //         text: HORIZONTAL.into(),
-                //         style: Style::default(),
-                //     },
-                //     VecI2 {
-                //         x: self.current.x + i,
-                //         y: area.y,
-                //     },
-                // ));
             }
         }
     }
 
     fn draw_gallery(&mut self, gallery: Gallery) {
         let mut lock = self.context.inner.write().unwrap();
-        // lock.draws.reserve(gallery.items.len());
+        
         for (bound, text) in gallery.items {
-            // lock.draws.push(Draw::Text(text, bound.top_left()));
             lock.draw(
                 &text.text,
                 text.style,
                 bound.top_left(),
                 self.layer,
-                self.clip,
+                bound,
             );
         }
     }
@@ -1007,20 +913,20 @@ impl Ui {
             Layout::TopLeftVertical | Layout::TopLeftHorizontal => {}
             Layout::TopRightVertical | Layout::TopRightHorizontal => {
                 rect.x = rect.x.saturating_sub(rect.width) + 1;
-                for (bound, item) in &mut gallery {
+                for (bound, _item) in &mut gallery {
                     bound.x = bound.x.saturating_sub(rect.width) + 1;
                 }
             }
             Layout::BottomLeftVertical | Layout::BottomLeftHorizontal => {
                 rect.y = rect.y.saturating_sub(rect.height) + 1;
-                for (bound, item) in &mut gallery {
+                for (bound, _item) in &mut gallery {
                     bound.y = bound.y.saturating_sub(rect.height) + 1;
                 }
             }
             Layout::BottomRightVertical | Layout::BottomRightHorizontal => {
                 rect.y = rect.y.saturating_sub(rect.height) + 1;
                 rect.x = rect.x.saturating_sub(rect.width) + 1;
-                for (bound, item) in &mut gallery {
+                for (bound, _item) in &mut gallery {
                     bound.x = bound.x.saturating_sub(rect.width) + 1;
                     bound.y = bound.y.saturating_sub(rect.height) + 1;
                 }
