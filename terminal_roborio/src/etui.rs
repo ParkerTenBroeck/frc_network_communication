@@ -15,6 +15,7 @@ use self::{
 pub mod id;
 pub mod math_util;
 pub mod memory;
+pub mod screen;
 pub mod symbols;
 
 #[derive(Debug)]
@@ -478,14 +479,14 @@ impl Ui {
         let remaining = ((len as u32 * 8) - complete) / 8;
 
         for _ in 0..whole {
-            for _ in 0..width{
+            for _ in 0..width {
                 string.push('█');
             }
             if layout.is_primary_vertical() {
                 string.push('\n');
             }
         }
-        match layout{
+        match layout {
             Layout::TopLeftVertical => style.attributes.set(Attribute::Reverse),
             Layout::TopLeftHorizontal => style.attributes.set(Attribute::NoReverse),
             Layout::TopRightVertical => style.attributes.set(Attribute::Reverse),
@@ -495,9 +496,9 @@ impl Ui {
             Layout::BottomRightVertical => style.attributes.set(Attribute::NoReverse),
             Layout::BottomRightHorizontal => style.attributes.set(Attribute::Reverse),
         }
-        
+
         if whole + remaining != len as u32 {
-            let t = if layout.is_primary_horizontal(){
+            let t = if layout.is_primary_horizontal() {
                 match complete % 8 {
                     0 => ' ',
                     1 => '▏',
@@ -510,7 +511,7 @@ impl Ui {
                     // not gonna happen
                     _ => ' ',
                 }
-            }else{
+            } else {
                 match complete % 8 {
                     0 => ' ',
                     1 => '▁',
@@ -524,7 +525,7 @@ impl Ui {
                     _ => ' ',
                 }
             };
-            for _ in 0..width{
+            for _ in 0..width {
                 string.push(t);
             }
             if layout.is_primary_vertical() {
@@ -532,14 +533,14 @@ impl Ui {
             }
         }
         for _ in 0..remaining {
-            for _ in 0..width{
+            for _ in 0..width {
                 string.push(' ');
             }
             if layout.is_primary_vertical() {
                 string.push('\n');
             }
         }
-        if self.layout.is_primary_vertical(){
+        if self.layout.is_primary_vertical() {
             string = string.chars().rev().collect();
         }
         string = string.trim_matches('\n').to_owned();

@@ -15,6 +15,8 @@ pub mod ringbuffer;
 mod tcp;
 mod udp;
 
+pub type Joystick = robot_comm::common::joystick::Joystick;
+
 #[derive(Default, Debug)]
 pub struct RoborioCom {
     udp: RoborioUdp,

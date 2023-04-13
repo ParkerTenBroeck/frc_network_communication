@@ -174,7 +174,7 @@ impl Debug for Joystick {
 }
 
 impl Joystick {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             axis_povs: unsafe { NonZeroU8::new_unchecked(0b1000_0000) },
             buttons_len: 0,

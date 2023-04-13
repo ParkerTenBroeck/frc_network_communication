@@ -574,7 +574,6 @@ fn idk() {
                             } else {
                                 ControllerInfo::None { id: index }
                             };
-                            println!("{controller:#?}");
                         }
                         0x07 => {
                             // match info

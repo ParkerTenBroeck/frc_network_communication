@@ -1,9 +1,9 @@
 use crossterm::style::Color;
-use roborio::RoborioCom;
+use roborio::{Joystick, RoborioCom};
 use std::{
     collections::{HashMap, HashSet},
     hash::Hasher,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use crate::{
@@ -52,11 +52,13 @@ impl App {
         }
     }
 
-    pub fn ui(&mut self, ctx: &etui::Context) {
+    pub fn ui(&mut self, ctx: &etui::Context, len: usize) {
         self.driverstation.observe_robot_code(true);
         Context::frame(ctx, |ui| {
             // test_layout_text(ui);
 
+            ui.label(format!("{:?}", ui.get_max().size()));
+            ui.label(format!("Draw call len: {}B", len));
             // if true {
             //     return;
             // }
@@ -138,7 +140,6 @@ impl App {
                         if ui.button("こんにちは世界!").pressed() {
                             ui.label("UNICODEEEEE")
                         }
-                        // ui.label(format!("{:#?}", ui.ctx().get_event()));
 
                         // ui.label(format!("{:?}", ui.get_clip()));
                         // ui.label(format!("{:?}", ui.get_cursor()));
@@ -256,21 +257,28 @@ impl App {
 
                                                 ui.label("Axis");
                                                 ui.horizontal(|ui| {
-                                                    ui.vertical(|ui|{
-
+                                                    ui.vertical(|ui| {
                                                         for a in 0..joy.axis_len() {
                                                             ui.horizontal(|ui| {
                                                                 ui.label(format!(" {}:", a));
-                                                                let val = joy.get_axis(a).unwrap_or(0)
-                                                                    as u32
-                                                                    + 128;
+                                                                let val =
+                                                                    joy.get_axis(a).unwrap_or(0)
+                                                                        as u32
+                                                                        + 128;
                                                                 let val = val as f32 / 255.0;
                                                                 let style = Style {
                                                                     fg: Color::Green,
                                                                     bg: Color::DarkGrey,
                                                                     ..Default::default()
                                                                 };
-                                                                ui.progress_bar(style, 8, 8, 1, etui::Layout::TopLeftHorizontal,val)
+                                                                ui.progress_bar(
+                                                                    style,
+                                                                    8,
+                                                                    8,
+                                                                    1,
+                                                                    etui::Layout::TopLeftHorizontal,
+                                                                    val,
+                                                                )
                                                                 // ui.label(format!("{}", val))
                                                             });
                                                         }
@@ -286,7 +294,14 @@ impl App {
                                                             bg: Color::DarkGrey,
                                                             ..Default::default()
                                                         };
-                                                        ui.progress_bar(style, 6, 6, 2, etui::Layout::TopLeftVertical,val)
+                                                        ui.progress_bar(
+                                                            style,
+                                                            6,
+                                                            6,
+                                                            2,
+                                                            etui::Layout::TopLeftVertical,
+                                                            val,
+                                                        )
                                                     });
                                                 });
                                             } else {
