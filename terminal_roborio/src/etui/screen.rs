@@ -139,7 +139,7 @@ impl Screen {
                                 cell.str_offset = last.str_offset;
                             }
                         }
-                        drawn_any = self.write_cell(cell, character_screen_width as u16, start);
+                        drawn_any |= self.write_cell(cell, character_screen_width as u16, start);
                     }
                     cell.str_len = 0;
                     cell.str_offset = self.text.len() as u32;
@@ -242,34 +242,64 @@ impl Screen {
         self.text.clear();
     }
 
-    pub fn iter_drain(&mut self) -> ScreenIter {
+    pub fn drain(&mut self) -> ScreenDrain {
+        ScreenDrain::new(self)
+    }
+
+    pub fn iter(&mut self) -> ScreenIter {
         ScreenIter::new(self)
+    }
+}
+
+pub struct ScreenDrain<'a> {
+    iter: ScreenIter<'a>,
+}
+
+impl<'a> ScreenDrain<'a> {
+    pub fn new(screen: &'a mut Screen) -> Self {
+        Self {
+            iter: ScreenIter {
+                screen,
+                index: 0,
+                drain: true,
+            },
+        }
+    }
+
+    pub fn next(&mut self) -> Option<(&str, Style, VecI2)> {
+        self.iter.next()
+    }
+}
+
+impl<'a> Drop for ScreenDrain<'a> {
+    fn drop(&mut self) {
+        while let Some(_) = self.iter.next() {}
+        self.iter.screen.text.clear();
+        self.iter.screen.styles.clear();
+        self.iter.screen.last_cell = None;
     }
 }
 
 pub struct ScreenIter<'a> {
     screen: &'a mut Screen,
     index: usize,
-}
-
-impl<'a> Drop for ScreenIter<'a> {
-    fn drop(&mut self) {
-        self.screen.text.clear();
-        self.screen.styles.clear();
-        self.screen.last_cell = None;
-        // assert
-    }
+    drain: bool,
 }
 
 impl<'a> ScreenIter<'a> {
-    fn new(screen: &'a mut Screen) -> Self {
-        Self { screen, index: 0 }
+    pub fn new(screen: &'a mut Screen) -> Self {
+        Self {
+            screen,
+            index: 0,
+            drain: false,
+        }
     }
 
-    pub fn take_next(&mut self) -> Option<(&str, Style, VecI2)> {
+    pub fn next(&mut self) -> Option<(&str, Style, VecI2)> {
         loop {
             let curr_index = self.index;
-            let cell = self.screen.cells.get_mut(self.index)?.take();
+            let cell = self.screen.cells.get_mut(self.index)?;
+            let cell = if self.drain { cell.take() } else { *cell };
             self.index += 1;
             match cell {
                 CellData::Some(cell) => {

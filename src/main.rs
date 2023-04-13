@@ -280,9 +280,9 @@ pub mod roborio;
 fn main() {
     // bruh::run_bruh()
     // simulate_roborio()
-    // run_driverstation()
+    run_driverstation()
     // run_bruh()
-    hacker()
+    // hacker()
 }
 
 pub fn hacker() {

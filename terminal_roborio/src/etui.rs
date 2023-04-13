@@ -1,4 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    num::NonZeroU8,
+    sync::{Arc, RwLock},
+};
 
 use crossterm::{
     event::{Event, MouseButton, MouseEventKind},
@@ -9,6 +12,7 @@ use self::{
     id::Id,
     math_util::{Rect, VecI2},
     memory::Memory,
+    screen::{Screen, ScreenDrain, ScreenIter},
     symbols::line::*,
 };
 
@@ -69,19 +73,47 @@ pub struct MouseState {
 }
 
 #[derive(Debug, Default)]
-struct ContextInner {
+pub struct ContextInner {
     event: Option<Event>,
     mouse: Option<MouseState>,
-    draws: Vec<Draw>,
     max_rect: Rect,
     memory: Memory,
+
+    current: Screen,
+    last: Screen,
 }
 impl ContextInner {
     fn new(size: Rect) -> ContextInner {
-        Self {
+        let mut myself = Self {
             max_rect: size,
             ..Default::default()
+        };
+        myself.current.resize(size.size());
+        myself.last.resize(size.size());
+        myself
+    }
+
+    pub fn draw(&mut self, str: &str, style: Style, start: VecI2, layer: NonZeroU8, clip: Rect) {
+        self.current.push_text(
+            str,
+            style,
+            start,
+            layer,
+            Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(u16::MAX, u16::MAX)),
+        )
+    }
+
+    pub fn finish_frame(&mut self) -> (ScreenIter<'_>, ScreenDrain<'_>) {
+        if let Some(mouse) = &mut self.mouse {
+            for button in &mut mouse.buttons {
+                button.next_state();
+            }
         }
+
+        self.memory.clear_seen();
+        let ContextInner { current, last, .. } = self;
+        std::mem::swap(last, current);
+        (last.iter(), current.drain())
     }
 }
 
@@ -103,21 +135,13 @@ impl Context {
             },
             context: (*self).clone(),
             current: Default::default(),
+            layer: NonZeroU8::new(1).unwrap(),
         };
         func(&mut ui);
     }
 
-    pub fn finish_frame(&mut self, vec: &mut Vec<Draw>) {
-        let mut lock = self.inner.write().unwrap();
-
-        if let Some(mouse) = &mut lock.mouse {
-            for button in &mut mouse.buttons {
-                button.next_state();
-            }
-        }
-
-        lock.memory.clear_seen();
-        vec.append(&mut lock.draws);
+    pub fn inner(&mut self) -> &mut Arc<RwLock<ContextInner>> {
+        &mut self.inner
     }
 
     pub fn handle_event(&self, event: Event) {
@@ -177,6 +201,11 @@ impl Context {
 
     pub fn clear_event(&self) {
         self.inner.write().unwrap().event = None
+    }
+
+    pub fn draw(&mut self, str: &str, style: Style, start: VecI2, layer: NonZeroU8, clip: Rect) {
+        let mut lock = self.inner.write().unwrap();
+        lock.current.push_text(str, style, start, layer, clip)
     }
 
     fn interact(&self, clip: Rect, id: Id, area: Rect) -> Response {
@@ -302,6 +331,7 @@ pub struct Ui {
     max_rect: Rect,
     cursor: VecI2,
     current: Rect,
+    layer: NonZeroU8,
 }
 
 impl Ui {
@@ -576,83 +606,153 @@ impl Ui {
 
         let mut lock = self.context.inner.write().unwrap();
 
-        lock.draws.push(Draw::Text(
-            StyledText {
-                text: TOP_LEFT.into(),
-                style: Style::default(),
-            },
-            border.top_left(),
-        ));
+        // lock.draws.push(Draw::Text(
+        //     StyledText {
+        //         text: TOP_LEFT.into(),
+        //         style: Style::default(),
+        //     },
+        //     border.top_left(),
+        // ));
         for i in 1..(border.width) {
-            lock.draws.push(Draw::Text(
-                StyledText {
-                    text: HORIZONTAL.into(),
-                    style: Style::default(),
-                },
+            // lock.draws.push(Draw::Text(
+            //     StyledText {
+            //         text: HORIZONTAL.into(),
+            //         style: Style::default(),
+            //     },
+            //     VecI2 {
+            //         x: border.x + i,
+            //         y: border.y,
+            //     },
+            // ));
+
+            lock.draw(
+                HORIZONTAL,
+                Style::default(),
                 VecI2 {
                     x: border.x + i,
                     y: border.y,
                 },
-            ));
+                self.layer,
+                self.clip,
+            );
         }
 
-        lock.draws.push(Draw::Text(
-            StyledText {
-                text: TOP_RIGHT.into(),
-                style: Style::default(),
-            },
+        lock.draw(
+            TOP_LEFT,
+            Style::default(),
+            border.top_left(),
+            self.layer,
+            self.clip,
+        );
+        lock.draw(
+            TOP_RIGHT,
+            Style::default(),
             border.top_right(),
-        ));
-
-        lock.draws.push(Draw::Text(
-            StyledText {
-                text: BOTTOM_LEFT.into(),
-                style: Style::default(),
-            },
+            self.layer,
+            self.clip,
+        );
+        lock.draw(
+            BOTTOM_RIGHT,
+            Style::default(),
+            border.bottom_right(),
+            self.layer,
+            self.clip,
+        );
+        lock.draw(
+            BOTTOM_LEFT,
+            Style::default(),
             border.bottom_left(),
-        ));
+            self.layer,
+            self.clip,
+        );
+        // lock.draws.push(Draw::Text(
+        //     StyledText {
+        //         text: TOP_RIGHT.into(),
+        //         style: Style::default(),
+        //     },
+        //     border.top_right(),
+        // ));
+
+        // lock.draws.push(Draw::Text(
+        //     StyledText {
+        //         text: BOTTOM_LEFT.into(),
+        //         style: Style::default(),
+        //     },
+        //     border.bottom_left(),
+        // ));
         for i in 1..(border.width) {
-            lock.draws.push(Draw::Text(
-                StyledText {
-                    text: HORIZONTAL.into(),
-                    style: Style::default(),
-                },
+            // lock.draws.push(Draw::Text(
+            //     StyledText {
+            //         text: HORIZONTAL.into(),
+            //         style: Style::default(),
+            //     },
+            //     VecI2 {
+            //         x: border.x + i,
+            //         y: border.bottom_right().y,
+            //     },
+            // ));
+
+            lock.draw(
+                HORIZONTAL,
+                Style::default(),
                 VecI2 {
                     x: border.x + i,
                     y: border.bottom_right().y,
                 },
-            ));
+                self.layer,
+                self.clip,
+            );
         }
 
-        lock.draws.push(Draw::Text(
-            StyledText {
-                text: BOTTOM_RIGHT.into(),
-                style: Style::default(),
-            },
-            border.bottom_right(),
-        ));
+        // lock.draws.push(Draw::Text(
+        //     StyledText {
+        //         text: BOTTOM_RIGHT.into(),
+        //         style: Style::default(),
+        //     },
+        //     border.bottom_right(),
+        // ));
 
         for i in 1..(border.height) {
-            lock.draws.push(Draw::Text(
-                StyledText {
-                    text: VERTICAL.into(),
-                    style: Style::default(),
-                },
+            lock.draw(
+                VERTICAL,
+                Style::default(),
                 VecI2 {
                     x: border.x,
                     y: border.y + i,
                 },
-            ));
-            lock.draws.push(Draw::Text(
-                StyledText {
-                    text: VERTICAL.into(),
-                    style: Style::default(),
-                },
+                self.layer,
+                self.clip,
+            );
+            lock.draw(
+                VERTICAL,
+                Style::default(),
                 VecI2 {
                     x: border.bottom_right().x,
                     y: border.y + i,
                 },
-            ));
+                self.layer,
+                self.clip,
+            );
+            // lock.draws.push(Draw::Text(
+            //     StyledText {
+            //         text: VERTICAL.into(),
+            //         style: Style::default(),
+            //     },
+            //     VecI2 {
+            //         x: border.x,
+            //         y: border.y + i,
+            //     },
+            // ));
+            // lock.draws.push(Draw::Text(
+            //     StyledText {
+            //         text: VERTICAL.into(),
+            //         style: Style::default(),
+            //     },
+            //     VecI2 {
+            //         x: border.bottom_right().x,
+            //         y: border.y + i,
+            //     },
+            // ));
         }
         drop(lock);
         child.add_space(VecI2::new(1, 1));
@@ -719,40 +819,67 @@ impl Ui {
 
             let mut lock = self.context.inner.write().unwrap();
             for i in 0..area.height {
-                lock.draws.push(Draw::Text(
-                    StyledText {
-                        text: VERTICAL.into(),
-                        style: Style::default(),
-                    },
+                lock.draw(
+                    VERTICAL,
+                    Style::default(),
                     VecI2 {
                         x: area.x,
                         y: self.current.y + i,
                     },
-                ));
+                    self.layer,
+                    self.clip,
+                );
+                // lock.draws.push(Draw::Text(
+                //     StyledText {
+                //         text: VERTICAL.into(),
+                //         style: Style::default(),
+                //     },
+                //     VecI2 {
+                //         x: area.x,
+                //         y: self.current.y + i,
+                //     },
+                // ));
             }
         } else {
             let area = self.allocate_size(VecI2::new(self.current.width, 1));
             let mut lock = self.context.inner.write().unwrap();
             for i in 0..area.width {
-                lock.draws.push(Draw::Text(
-                    StyledText {
-                        text: HORIZONTAL.into(),
-                        style: Style::default(),
-                    },
+                lock.draw(
+                    HORIZONTAL,
+                    Style::default(),
                     VecI2 {
                         x: self.current.x + i,
                         y: area.y,
                     },
-                ));
+                    self.layer,
+                    self.clip,
+                );
+                // lock.draws.push(Draw::Text(
+                //     StyledText {
+                //         text: HORIZONTAL.into(),
+                //         style: Style::default(),
+                //     },
+                //     VecI2 {
+                //         x: self.current.x + i,
+                //         y: area.y,
+                //     },
+                // ));
             }
         }
     }
 
     fn draw_gallery(&mut self, gallery: Gallery) {
         let mut lock = self.context.inner.write().unwrap();
-        lock.draws.reserve(gallery.items.len());
+        // lock.draws.reserve(gallery.items.len());
         for (bound, text) in gallery.items {
-            lock.draws.push(Draw::Text(text, bound.top_left()));
+            // lock.draws.push(Draw::Text(text, bound.top_left()));
+            lock.draw(
+                &text.text,
+                text.style,
+                bound.top_left(),
+                self.layer,
+                self.clip,
+            );
         }
     }
 
@@ -809,16 +936,26 @@ impl Ui {
 
             let mut lock = ui.context.inner.write().unwrap();
             for i in 0..used.height {
-                lock.draws.push(Draw::Text(
-                    StyledText {
-                        text: VERTICAL.into(),
-                        style: Style::default(),
-                    },
+                // lock.draws.push(Draw::Text(
+                //     StyledText {
+                //         text: VERTICAL.into(),
+                //         style: Style::default(),
+                //     },
+                //     VecI2 {
+                //         x: used.x - 1,
+                //         y: used.y + i,
+                //     },
+                // ));
+                lock.draw(
+                    VERTICAL,
+                    Style::default(),
                     VecI2 {
                         x: used.x - 1,
                         y: used.y + i,
                     },
-                ));
+                    ui.layer,
+                    ui.clip,
+                );
             }
         });
     }
@@ -1210,13 +1347,15 @@ impl BoxedArea {
                 (true, true, true, true) => set.cross,
                 _ => "*",
             };
-            lock.draws.push(Draw::Text(
-                StyledText {
-                    text: val.to_owned(),
-                    style,
-                },
-                *pos,
-            ))
+            let clip = lock.max_rect;
+            lock.draw(val, style, *pos, NonZeroU8::new(1).unwrap(), clip);
+            // lock.draws.push(Draw::Text(
+            //     StyledText {
+            //         text: val.to_owned(),
+            //         style,
+            //     },
+            //     *pos,
+            // ))
         }
     }
 }

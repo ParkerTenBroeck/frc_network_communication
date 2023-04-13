@@ -11,7 +11,7 @@ use crossterm::{
 use etui::{
     math_util::{Rect, VecI2},
     screen::Screen,
-    Context, StyledText,
+    Context, Style, StyledText,
 };
 use roborio::RoborioCom;
 use std::{
@@ -63,6 +63,8 @@ impl Log {
 }
 
 fn main() -> Result<(), io::Error> {
+    std::env::set_var("RUST_BACKTRACE", "1");
+
     let driverstation = Arc::new(RoborioCom::default());
     let log = Arc::new(Log::default());
     let send = log.clone();
@@ -171,115 +173,88 @@ fn run_app(
 
         let mut ctx = Context::new(Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
 
-        let mut screen_test = Screen::default();
-        screen_test.resize(VecI2::new(x, y));
+        // let mut screen_test = Screen::default();
+        // screen_test.resize(VecI2::new(x, y));
 
         let mut data: Vec<u8> = Vec::new();
         let mut last_len = 0;
-        let mut last_delta = 0;
 
         loop {
             data.clear();
             app.ui(&ctx, last_len);
 
-            data.queue(crossterm::terminal::Clear(
-                crossterm::terminal::ClearType::All,
-            ))?;
+            // data.queue(crossterm::terminal::Clear(
+            //     crossterm::terminal::ClearType::All,
+            // ))?;
 
-            let mut draws = Vec::new();
-            ctx.finish_frame(&mut draws);
+            let mut lock = ctx.inner().write().unwrap();
+            let (mut current_frame, mut last_frame) = lock.finish_frame();
 
             let mut last_fg = None;
             let mut last_bg = None;
             let mut last_attr = None;
             let mut last_position = None;
-            data.queue(crossterm::cursor::MoveTo(0, 0))?;
 
-            for items in draws {
-                match items {
-                    etui::Draw::ClearAll(_) => todo!(),
-                    etui::Draw::Clear(_, _) => todo!(),
-                    etui::Draw::Text(text, start) => {
-                        screen_test.push_text(
-                            &text.text,
-                            text.style,
-                            start,
-                            NonZeroU8::new(1).unwrap(),
-                            Rect::new_pos_size(VecI2::new(0, 0), screen_test.size()),
-                        );
-
-                        // let StyledText { text, style } = text;
-
-                        // let mut bruh = false;
-
-                        // if last_position == Some(start) {
-                        //     let mut next = start;
-                        //     next.x += unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
-                        //     last_position = Some(next)
-                        // } else {
-                        //     if let Some(old) = last_position {
-                        //         if old.x == start.x {
-                        //             data.queue(crossterm::cursor::MoveToRow(start.y))?;
-                        //         } else if old.y == start.y {
-                        //             data.queue(crossterm::cursor::MoveToColumn(start.x))?;
-                        //         } else {
-                        //             data.queue(crossterm::cursor::MoveTo(start.x, start.y))?;
-                        //         }
-                        //     } else {
-                        //         data.queue(crossterm::cursor::MoveTo(start.x, start.y))?;
-                        //     }
-                        //     let mut next = start;
-                        //     next.x += unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
-                        //     last_position = Some(next);
-
-                        //     // data.queue(crossterm::style::Print("*"))?;
-                        //     // continue;
-                        // }
-                        // //todo make this better
-                        // if last_attr != Some(style.attributes) {
-                        //     let mut attr = style.attributes;
-                        //     attr.set(Attribute::Reset);
-                        //     data.queue(crossterm::style::SetAttributes(attr))?;
-                        //     last_attr = Some(style.attributes);
-                        //     data.queue(crossterm::style::SetForegroundColor(style.fg))?;
-                        //     last_fg = Some(style.fg);
-                        //     data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
-                        //     last_bg = Some(style.bg);
-
-                        //     bruh = true;
-                        // }
-
-                        // if last_fg != Some(style.fg) {
-                        //     data.queue(crossterm::style::SetForegroundColor(style.fg))?;
-                        //     last_fg = Some(style.fg);
-                        //     bruh = true;
-                        // }
-                        // if last_bg != Some(style.bg) {
-                        //     data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
-                        //     last_bg = Some(style.bg);
-                        //     bruh = true;
-                        // }
-
-                        // let text = text.replace(' ', "_");
-                        // if bruh {
-                        //     data.queue(crossterm::style::Print("*"))?;
-
-                        //     if text.chars().count() > 1 {
-                        //         let mut b = text.char_indices();
-                        //         b.next();
-                        //         data.queue(crossterm::style::Print(
-                        //             text.split_at(b.next().unwrap().0).1,
-                        //         ))?;
-                        //     }
-                        // } else {
-                        // data.queue(crossterm::style::Print(text))?;
-                        // }
-                    }
+            let mut update_prev = true;
+            let mut update_now = true;
+            let mut curr_prev = None;
+            let mut curr_new = None;
+            loop {
+                if update_now {
+                    update_now = false;
+                    curr_new = current_frame.next();
                 }
-            }
+                if update_prev {
+                    update_prev = false;
+                    curr_prev = last_frame.next();
+                }
 
-            let mut iter = screen_test.iter_drain();
-            while let Some((text, style, pos)) = iter.take_next() {
+                let (text, style, pos) = match (curr_new, curr_prev) {
+                    (Some(curr), Some(prev)) => {
+                        // thats very convienient
+                        if curr == prev {
+                            update_prev = true;
+                            update_now = true;
+                            continue;
+                        }
+
+                        if curr.2 == prev.2 {
+                            update_prev = true;
+                            update_now = true;
+                            // same position different text/style
+                            curr
+                        } else if curr.2.y == prev.2.y{
+                            if curr.2.x > prev.2.x{
+                                update_prev = true;
+                                (" ", Style::default(), prev.2)
+                            }else if curr.2.x < prev.2.x{
+                                update_now = true;
+                                curr
+                            }else{
+                                panic!()
+                            }
+                        } else if curr.2.y < prev.2.y{
+                            update_now = true;
+                            curr
+                        }else if curr.2.y > prev.2.y{
+                            update_prev = true;
+                            (" ", Style::default(), prev.2)
+                        }else{
+                            panic!()
+                        }
+                    }
+                    (None, None) => break,
+                    (None, Some((_bruh, _style, pos))) => {
+                        update_prev = true;
+                        // idk if a single space will do cells with a larger character width might do somethin funky
+                        (" ", Style::default(), pos)
+                    }
+                    (Some(to_draw), None) => {
+                        update_now = true;
+                        to_draw
+                    }
+                };
+
                 if last_position == Some(pos) {
                     let mut next = pos;
                     next.x += unicode_width::UnicodeWidthStr::width(text) as u16;
@@ -299,10 +274,8 @@ fn run_app(
                     let mut next = pos;
                     next.x += unicode_width::UnicodeWidthStr::width(text) as u16;
                     last_position = Some(next);
-
-                    // data.queue(crossterm::style::Print("*"))?;
-                    // continue;
                 }
+
                 //todo make this better
                 if last_attr != Some(style.attributes) {
                     let mut attr = style.attributes;
@@ -313,34 +286,73 @@ fn run_app(
                     last_fg = Some(style.fg);
                     data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
                     last_bg = Some(style.bg);
-
-                    // bruh = true;
                 }
 
                 if last_fg != Some(style.fg) {
                     data.queue(crossterm::style::SetForegroundColor(style.fg))?;
                     last_fg = Some(style.fg);
-                    // bruh = true;
                 }
                 if last_bg != Some(style.bg) {
                     data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
                     last_bg = Some(style.bg);
-                    // bruh = true;
                 }
 
                 data.queue(crossterm::style::Print(text))?;
             }
-            drop(iter);
-            // screen_test.iter();
 
-            // screen_test.clear();
+            // while let Some((text, style, pos)) = current_frame.next() {
+            //     if last_position == Some(pos) {
+            //         let mut next = pos;
+            //         next.x += unicode_width::UnicodeWidthStr::width(text) as u16;
+            //         last_position = Some(next)
+            //     } else {
+            //         if let Some(old) = last_position {
+            //             if old.x == pos.x {
+            //                 data.queue(crossterm::cursor::MoveToRow(pos.y))?;
+            //             } else if old.y == pos.y {
+            //                 data.queue(crossterm::cursor::MoveToColumn(pos.x))?;
+            //             } else {
+            //                 data.queue(crossterm::cursor::MoveTo(pos.x, pos.y))?;
+            //             }
+            //         } else {
+            //             data.queue(crossterm::cursor::MoveTo(pos.x, pos.y))?;
+            //         }
+            //         let mut next = pos;
+            //         next.x += unicode_width::UnicodeWidthStr::width(text) as u16;
+            //         last_position = Some(next);
+            //     }
+
+            //     //todo make this better
+            //     if last_attr != Some(style.attributes) {
+            //         let mut attr = style.attributes;
+            //         attr.set(Attribute::Reset);
+            //         data.queue(crossterm::style::SetAttributes(attr))?;
+            //         last_attr = Some(style.attributes);
+            //         data.queue(crossterm::style::SetForegroundColor(style.fg))?;
+            //         last_fg = Some(style.fg);
+            //         data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
+            //         last_bg = Some(style.bg);
+            //     }
+
+            //     if last_fg != Some(style.fg) {
+            //         data.queue(crossterm::style::SetForegroundColor(style.fg))?;
+            //         last_fg = Some(style.fg);
+            //     }
+            //     if last_bg != Some(style.bg) {
+            //         data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
+            //         last_bg = Some(style.bg);
+            //     }
+
+            //     data.queue(crossterm::style::Print(text))?;
+            // }
+            drop((current_frame, last_frame));
+            drop(lock);
 
             last_len = data.len();
             stdout.write_all(&data)?;
             stdout.flush()?;
 
             ctx.clear_event();
-            // loop {
             let timeout = tick_rate
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
@@ -356,12 +368,8 @@ fn run_app(
                     }
                 }
                 ctx.handle_event(event);
-                // break;
             }
-            if last_tick.elapsed() >= tick_rate {
-                last_tick = Instant::now();
-            }
-            // }
+            last_tick = Instant::now();
         }
     });
     match res {
