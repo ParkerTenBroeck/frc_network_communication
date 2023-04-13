@@ -263,8 +263,8 @@ impl App {
                                                                 ui.label(format!(" {}:", a));
                                                                 let val =
                                                                     joy.get_axis(a).unwrap_or(0)
-                                                                        as u32
-                                                                        + 128;
+                                                                        as i32
+                                                                        + 128i32;
                                                                 let val = val as f32 / 255.0;
                                                                 let style = Style {
                                                                     fg: Color::Green,
@@ -285,9 +285,10 @@ impl App {
                                                     });
                                                     ui.add_space_primary_direction(1);
                                                     ui.vertical(|ui| {
-                                                        let val = joy.get_axis(0).unwrap_or(0)
-                                                            as u32
-                                                            + 128;
+                                                        let val = joy.get_axis(0).unwrap_or(0);
+                                                        let val = val as i32;
+                                                        let val = val + 128;
+
                                                         let val = val as f32 / 255.0;
                                                         let style = Style {
                                                             fg: Color::Green,

@@ -77,9 +77,15 @@ pub struct Screen {
 
 impl Screen {
     pub fn resize(&mut self, size: VecI2) {
+        let len = (size.x * size.y) as usize;
         self.cells
-            .resize((size.x * size.y) as usize, Default::default());
+            .reserve(len);
+        self.cells.fill(CellData::none());
+        self.cells.resize(len, CellData::none());
         self.cells_dismentions = size;
+        self.last_cell = None;
+        self.text.clear();
+        self.styles.clear();
     }
 
     pub fn size(&self) -> VecI2 {
@@ -273,7 +279,10 @@ impl<'a> ScreenDrain<'a> {
 
 impl<'a> Drop for ScreenDrain<'a> {
     fn drop(&mut self) {
-        while let Some(_) = self.iter.next() {}
+        if !std::thread::panicking(){
+
+            while let Some(_) = self.iter.next() {}
+        }
         self.iter.screen.text.clear();
         self.iter.screen.styles.clear();
         self.iter.screen.last_cell = None;

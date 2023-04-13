@@ -170,22 +170,24 @@ fn run_app(
         let mut last_tick = Instant::now();
 
         let (x, y) = crossterm::terminal::size()?;
+        let mut last_observed_size = VecI2::new(x,y);
 
-        let mut ctx = Context::new(Rect::new_pos_size(VecI2::new(0, 0), VecI2::new(x, y)));
+        let mut ctx = Context::new(last_observed_size);
 
-        // let mut screen_test = Screen::default();
-        // screen_test.resize(VecI2::new(x, y));
 
         let mut data: Vec<u8> = Vec::new();
         let mut last_len = 0;
 
         loop {
+            let changed = ctx.set_size(last_observed_size);
             data.clear();
             app.ui(&ctx, last_len);
 
-            // data.queue(crossterm::terminal::Clear(
-            //     crossterm::terminal::ClearType::All,
-            // ))?;
+            if changed{
+                data.queue(crossterm::terminal::Clear(
+                    crossterm::terminal::ClearType::All,
+                ))?;
+            }
 
             let mut lock = ctx.inner().write().unwrap();
             let (mut current_frame, mut last_frame) = lock.finish_frame();
@@ -300,51 +302,6 @@ fn run_app(
                 data.queue(crossterm::style::Print(text))?;
             }
 
-            // while let Some((text, style, pos)) = current_frame.next() {
-            //     if last_position == Some(pos) {
-            //         let mut next = pos;
-            //         next.x += unicode_width::UnicodeWidthStr::width(text) as u16;
-            //         last_position = Some(next)
-            //     } else {
-            //         if let Some(old) = last_position {
-            //             if old.x == pos.x {
-            //                 data.queue(crossterm::cursor::MoveToRow(pos.y))?;
-            //             } else if old.y == pos.y {
-            //                 data.queue(crossterm::cursor::MoveToColumn(pos.x))?;
-            //             } else {
-            //                 data.queue(crossterm::cursor::MoveTo(pos.x, pos.y))?;
-            //             }
-            //         } else {
-            //             data.queue(crossterm::cursor::MoveTo(pos.x, pos.y))?;
-            //         }
-            //         let mut next = pos;
-            //         next.x += unicode_width::UnicodeWidthStr::width(text) as u16;
-            //         last_position = Some(next);
-            //     }
-
-            //     //todo make this better
-            //     if last_attr != Some(style.attributes) {
-            //         let mut attr = style.attributes;
-            //         attr.set(Attribute::Reset);
-            //         data.queue(crossterm::style::SetAttributes(attr))?;
-            //         last_attr = Some(style.attributes);
-            //         data.queue(crossterm::style::SetForegroundColor(style.fg))?;
-            //         last_fg = Some(style.fg);
-            //         data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
-            //         last_bg = Some(style.bg);
-            //     }
-
-            //     if last_fg != Some(style.fg) {
-            //         data.queue(crossterm::style::SetForegroundColor(style.fg))?;
-            //         last_fg = Some(style.fg);
-            //     }
-            //     if last_bg != Some(style.bg) {
-            //         data.queue(crossterm::style::SetBackgroundColor(style.bg))?;
-            //         last_bg = Some(style.bg);
-            //     }
-
-            //     data.queue(crossterm::style::Print(text))?;
-            // }
             drop((current_frame, last_frame));
             drop(lock);
 
@@ -367,7 +324,13 @@ fn run_app(
                         return Ok(());
                     }
                 }
-                ctx.handle_event(event);
+                // these can easily be batched
+                if let Event::Resize(x, y) = event {
+                    last_observed_size = VecI2::new(x,y);
+                }else{
+                    ctx.handle_event(event);
+                }
+
             }
             last_tick = Instant::now();
         }

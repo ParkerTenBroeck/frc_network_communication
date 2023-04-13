@@ -83,13 +83,13 @@ pub struct ContextInner {
     last: Screen,
 }
 impl ContextInner {
-    fn new(size: Rect) -> ContextInner {
+    fn new(size: VecI2) -> ContextInner {
         let mut myself = Self {
-            max_rect: size,
+            max_rect: Rect::new_pos_size(VecI2::new(0,0), size),
             ..Default::default()
         };
-        myself.current.resize(size.size());
-        myself.last.resize(size.size());
+        myself.current.resize(size);
+        myself.last.resize(size);
         myself
     }
 
@@ -193,7 +193,7 @@ impl Context {
         self.inner.read().unwrap().event.clone()
     }
 
-    pub fn new(size: Rect) -> Context {
+    pub fn new(size: VecI2) -> Context {
         Self {
             inner: Arc::new(RwLock::new(ContextInner::new(size))),
         }
@@ -220,6 +220,18 @@ impl Context {
             }
         } else {
             Response::new(area, id, None)
+        }
+    }
+
+    pub fn set_size(&self, last_observed_size: VecI2) -> bool {
+        let mut lock = self.inner.write().unwrap();
+        if lock.max_rect.size() != last_observed_size{
+            lock.max_rect = Rect::new_pos_size(VecI2::new(0,0), last_observed_size);
+            lock.current.resize(last_observed_size);
+            lock.last.resize(last_observed_size);
+            true
+        }else{
+            false
         }
     }
 }
